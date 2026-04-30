@@ -9,7 +9,7 @@ function App() {
       <Scene />
       {/* <color attach="background" args={["black"]} /> */}
 
-      <OrbitControls />
+      {/* <OrbitControls /> */}
       <Environment preset="studio" />
 
       <Perf />
