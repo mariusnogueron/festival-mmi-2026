@@ -1,18 +1,61 @@
-import { OrbitControls, Environment } from "@react-three/drei";
 import Scene from "./Scene";
 import { Canvas } from "@react-three/fiber";
 import { Perf } from "r3f-perf";
+import { useControls } from "leva";
+import {
+  EffectComposer,
+  N8AO,
+  Bloom,
+  ToneMapping,
+  SMAA,
+} from "@react-three/postprocessing";
+import { ToneMappingMode } from "postprocessing";
+import { PCFShadowMap } from "three";
 
 function App() {
+  const { aoIntensity, aoRadius, bloomIntensity } = useControls(
+    "Post-processing",
+    {
+      aoIntensity: {
+        label: "AO intensité",
+        value: 6,
+        min: 0,
+        max: 20,
+        step: 0.5,
+      },
+      aoRadius: { label: "AO rayon", value: 0.9, min: 0.1, max: 5, step: 0.1 },
+      bloomIntensity: {
+        label: "Bloom",
+        value: 0.25,
+        min: 0,
+        max: 3,
+        step: 0.05,
+      },
+    },
+  );
+
   return (
-    <Canvas className="!w-svw !h-svh">
+    <Canvas
+      flat
+      dpr={[1, 1.5]}
+      shadows={{ type: PCFShadowMap }}
+      className="w-svw! h-svh!"
+    >
       <Scene />
-      {/* <color attach="background" args={["black"]} /> */}
 
-      {/* <OrbitControls /> */}
-      <Environment preset="studio" />
-
-      <Perf />
+      <EffectComposer multisampling={0}>
+        <N8AO
+          aoRadius={aoRadius}
+          intensity={aoIntensity}
+          aoSamples={8}
+          denoiseSamples={4}
+          screenSpaceRadius
+        />
+        <Bloom luminanceThreshold={0.9} intensity={bloomIntensity} mipmapBlur />
+        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+        <SMAA />
+      </EffectComposer>
+      <Perf position="top-left" />
     </Canvas>
   );
 }
