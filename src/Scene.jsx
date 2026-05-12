@@ -1,17 +1,54 @@
-import { useRef, useEffect } from "react";
-import { useGLTF } from "@react-three/drei";
-import { useThree } from "@react-three/fiber";
+import { useRef, useEffect, useLayoutEffect } from "react";
+import { useGLTF, useCursor } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useControls } from "leva";
+import {
+  MathUtils,
+  PerspectiveCamera,
+  Quaternion,
+  Raycaster,
+  Vector2,
+  Vector3,
+} from "three";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import { isMinitelHit } from "./interactive-objects.js";
+import { useHoverUi } from "./hover-ui-context.jsx";
 
 RectAreaLightUniformsLib.init();
 
+const CAMERA_BLEND_MS = 2200;
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 export default function Model(props) {
-  const { scene } = useGLTF("/chambre_opt.glb");
-  const { set, size, gl } = useThree();
+  const { scene: gltfScene } = useGLTF("/chambre_opt.glb");
+  const { set, size, gl, camera } = useThree();
+  const { hoverHint, setHoverHint } = useHoverUi();
+  useCursor(!!hoverHint);
 
   const cameras = useRef({});
   const pointLightRef = useRef(null);
+  const blendCamRef = useRef(new PerspectiveCamera(50, 1, 0.05, 5000));
+  const cameraBlendRef = useRef({
+    active: false,
+    t0: 0,
+    p0: new Vector3(),
+    q0: new Quaternion(),
+    p1: new Vector3(),
+    q1: new Quaternion(),
+    f0: 50,
+    f1: 50,
+    near0: 0.05,
+    near1: 0.05,
+    far0: 5000,
+    far1: 5000,
+    /** @type {import('three').PerspectiveCamera | null} */
+    target: null,
+  });
+  const tmpPos = useRef(new Vector3()).current;
+  const tmpQuat = useRef(new Quaternion()).current;
 
   const { normalScale } = useControls("Matériaux", {
     normalScale: {
@@ -23,29 +60,35 @@ export default function Model(props) {
     },
   });
 
-  const { activeCamera, pointIntensity, pointColor, shadowNormalBias } =
-    useControls("Point Light", {
-      activeCamera: {
-        label: "Caméra",
-        value: "cam-main",
-        options: ["cam-main", "cam-terminal"],
-      },
-      pointIntensity: {
-        label: "Intensité",
-        value: 25,
-        min: 0,
-        max: 8000,
-        step: 10,
-      },
-      pointColor: { label: "Couleur", value: "#e49f08" },
-      shadowNormalBias: {
-        label: "Shadow normal bias",
-        value: 0.05,
-        min: 0,
-        max: 0.5,
-        step: 0.005,
-      },
-    });
+  const [
+    { activeCamera, pointIntensity, pointColor, shadowNormalBias },
+    setPointLightControls,
+  ] = useControls("Point Light", () => ({
+    activeCamera: {
+      label: "Caméra",
+      value: "cam-main",
+      options: ["cam-main", "cam-terminal"],
+    },
+    pointIntensity: {
+      label: "Intensité",
+      value: 25,
+      min: 0,
+      max: 8000,
+      step: 10,
+    },
+    pointColor: { label: "Couleur", value: "#e49f08" },
+    shadowNormalBias: {
+      label: "Shadow normal bias",
+      value: 0.05,
+      min: 0,
+      max: 0.5,
+      step: 0.005,
+    },
+  }));
+
+  const activeCameraRef = useRef(activeCamera);
+  /** Caméra Leva juste avant passage en cam-terminal (clic minitel ou panneau). */
+  const cameraBeforeTerminalRef = useRef("cam-main");
 
   const [camPos, setCamPos] = useControls("Position caméra", () => ({
     x: { value: -0.989, min: -20, max: 20, step: 0.001 },
@@ -63,7 +106,161 @@ export default function Model(props) {
   });
 
   useEffect(() => {
-    scene.traverse((obj) => {
+    const prev = activeCameraRef.current;
+    if (activeCamera === "cam-terminal" && prev !== "cam-terminal") {
+      cameraBeforeTerminalRef.current = prev;
+    }
+    activeCameraRef.current = activeCamera;
+  }, [activeCamera]);
+
+  const lastAspectRef = useRef({ w: 0, h: 0 });
+
+  useFrame((state) => {
+    const b = cameraBlendRef.current;
+    const { width, height } = state.size;
+
+    if (!b.active && state.camera?.isPerspectiveCamera) {
+      const { w, h } = lastAspectRef.current;
+      if (w !== width || h !== height) {
+        lastAspectRef.current = { w: width, h: height };
+        state.camera.aspect = width / height;
+        state.camera.updateProjectionMatrix();
+      }
+    }
+
+    if (!b.active || !b.target) return;
+
+    const blendCam = blendCamRef.current;
+    const sz = state.size;
+    const now = performance.now();
+    let t = (now - b.t0) / CAMERA_BLEND_MS;
+    if (t >= 1) t = 1;
+    const e = easeInOutCubic(t);
+
+    tmpPos.copy(b.p0).lerp(b.p1, e);
+    tmpQuat.copy(b.q0).slerp(b.q1, e);
+    blendCam.position.copy(tmpPos);
+    blendCam.quaternion.copy(tmpQuat);
+    blendCam.fov = MathUtils.lerp(b.f0, b.f1, e);
+    blendCam.near = MathUtils.lerp(b.near0, b.near1, e);
+    blendCam.far = MathUtils.lerp(b.far0, b.far1, e);
+    blendCam.aspect = sz.width / sz.height;
+    blendCam.updateProjectionMatrix();
+
+    if (t >= 1) {
+      b.active = false;
+      const target = b.target;
+      b.target = null;
+      target.aspect = sz.width / sz.height;
+      target.updateProjectionMatrix();
+      state.set({ camera: target });
+      setCamPos({
+        x: target.position.x,
+        y: target.position.y,
+        z: target.position.z,
+      });
+    }
+  });
+
+  useLayoutEffect(() => {
+    const target = cameras.current[activeCamera];
+    if (!target?.isPerspectiveCamera) return;
+
+    const blendCam = blendCamRef.current;
+    const current = camera;
+    const sz = size;
+    if (current === target) return;
+
+    current.updateWorldMatrix(true, true);
+    target.updateWorldMatrix(true, true);
+    current.getWorldPosition(cameraBlendRef.current.p0);
+    current.getWorldQuaternion(cameraBlendRef.current.q0);
+    target.getWorldPosition(cameraBlendRef.current.p1);
+    target.getWorldQuaternion(cameraBlendRef.current.q1);
+
+    const b = cameraBlendRef.current;
+    b.f0 = current.fov;
+    b.f1 = target.fov;
+    b.near0 = current.near;
+    b.near1 = target.near;
+    b.far0 = current.far;
+    b.far1 = target.far;
+    b.target = target;
+    b.t0 = performance.now();
+    b.active = true;
+
+    blendCam.position.copy(b.p0);
+    blendCam.quaternion.copy(b.q0);
+    blendCam.fov = b.f0;
+    blendCam.near = b.near0;
+    blendCam.far = b.far0;
+    blendCam.aspect = sz.width / sz.height;
+    blendCam.updateProjectionMatrix();
+    set({ camera: blendCam });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uniquement au changement Leva ; `camera` exclu pour éviter de relancer le blend quand on assigne blendCam
+  }, [activeCamera]);
+
+  useEffect(() => {
+    const el = gl.domElement;
+    const raycaster = new Raycaster();
+    const ndc = new Vector2();
+
+    const clearHover = () => setHoverHint(null);
+
+    const raycastMinitel = (event) => {
+      const rect = el.getBoundingClientRect();
+      ndc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObject(gltfScene, true);
+      const firstMesh = hits.find((h) => h.object?.isMesh);
+      return Boolean(firstMesh && isMinitelHit(firstMesh.object));
+    };
+
+    const onPointerMove = (event) => {
+      if (raycastMinitel(event)) {
+        setHoverHint({ x: event.clientX, y: event.clientY });
+      } else {
+        setHoverHint(null);
+      }
+    };
+
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return;
+      if (raycastMinitel(event)) {
+        setPointLightControls({ activeCamera: "cam-terminal" });
+        return;
+      }
+      if (activeCameraRef.current === "cam-terminal") {
+        setPointLightControls({
+          activeCamera: cameraBeforeTerminalRef.current,
+        });
+      }
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      if (activeCameraRef.current !== "cam-terminal") return;
+      setPointLightControls({
+        activeCamera: cameraBeforeTerminalRef.current,
+      });
+    };
+
+    el.addEventListener("pointermove", onPointerMove);
+    el.addEventListener("pointerleave", clearHover);
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      el.removeEventListener("pointermove", onPointerMove);
+      el.removeEventListener("pointerleave", clearHover);
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [gltfScene, camera, gl, setHoverHint, setPointLightControls]);
+
+  useEffect(() => {
+    gltfScene.traverse((obj) => {
       if (obj.isCamera) cameras.current[obj.name] = obj;
       if (obj.isMesh) {
         obj.castShadow = true;
@@ -110,18 +307,10 @@ export default function Model(props) {
         z: defaultCam.position.z,
       });
     }
-  }, [scene]);
+  }, [gltfScene]); // eslint-disable-line react-hooks/exhaustive-deps -- exécution au chargement du GLB uniquement
 
   useEffect(() => {
-    const cam = cameras.current[activeCamera];
-    if (!cam) return;
-    cam.aspect = size.width / size.height;
-    cam.updateProjectionMatrix();
-    set({ camera: cam });
-    setCamPos({ x: cam.position.x, y: cam.position.y, z: cam.position.z });
-  }, [activeCamera, set, size, setCamPos]);
-
-  useEffect(() => {
+    if (cameraBlendRef.current.active) return;
     const cam = cameras.current[activeCamera];
     if (cam) cam.position.set(camPos.x, camPos.y, camPos.z);
   }, [camPos.x, camPos.y, camPos.z, activeCamera]);
@@ -140,18 +329,18 @@ export default function Model(props) {
   }, [shadowNormalBias]);
 
   useEffect(() => {
-    scene.traverse((obj) => {
+    gltfScene.traverse((obj) => {
       if (!obj.isMesh) return;
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       mats.forEach((mat) => {
         if (mat.normalMap) mat.normalScale.set(normalScale, normalScale);
       });
     });
-  }, [normalScale, scene]);
+  }, [normalScale, gltfScene]);
 
   return (
     <group {...props} dispose={null}>
-      <primitive object={scene} />
+      <primitive object={gltfScene} />
       <rectAreaLight
         position={[al1.x, al1.y, al1.z]}
         intensity={al1.intensity}
@@ -166,4 +355,3 @@ export default function Model(props) {
 useGLTF.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.6/",
 );
-useGLTF.preload("/chambre_opt.glb");

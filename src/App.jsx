@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Scene from "./Scene";
 import { Canvas } from "@react-three/fiber";
 import { Perf } from "r3f-perf";
@@ -11,6 +12,8 @@ import {
 } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import { PCFShadowMap } from "three";
+import { HoverTooltipOverlay } from "./hover-ui-context.jsx";
+import { LoaderOverlay, LoadingReporter } from "./loading-context.jsx";
 
 function App() {
   const { aoIntensity, aoRadius, bloomIntensity } = useControls(
@@ -35,28 +38,39 @@ function App() {
   );
 
   return (
-    <Canvas
-      flat
-      dpr={[1, 1.5]}
-      shadows={{ type: PCFShadowMap }}
-      className="w-svw! h-svh!"
-    >
-      <Scene />
+    <>
+      <Canvas
+        flat
+        dpr={[1, 1.5]}
+        shadows={{ type: PCFShadowMap }}
+        className="w-svw! h-svh!"
+      >
+        <LoadingReporter />
+        <Suspense fallback={null}>
+          <Scene />
+        </Suspense>
 
-      <EffectComposer multisampling={0}>
-        <N8AO
-          aoRadius={aoRadius}
-          intensity={aoIntensity}
-          aoSamples={8}
-          denoiseSamples={4}
-          screenSpaceRadius
-        />
-        <Bloom luminanceThreshold={0.9} intensity={bloomIntensity} mipmapBlur />
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-        <SMAA />
-      </EffectComposer>
-      <Perf position="top-left" />
-    </Canvas>
+        <EffectComposer multisampling={0}>
+          <N8AO
+            aoRadius={aoRadius}
+            intensity={aoIntensity}
+            aoSamples={8}
+            denoiseSamples={4}
+            screenSpaceRadius
+          />
+          <Bloom
+            luminanceThreshold={0.9}
+            intensity={bloomIntensity}
+            mipmapBlur
+          />
+          <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+          <SMAA />
+        </EffectComposer>
+        <Perf position="top-left" />
+      </Canvas>
+      <LoaderOverlay />
+      <HoverTooltipOverlay />
+    </>
   );
 }
 
