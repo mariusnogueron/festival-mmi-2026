@@ -1,4 +1,5 @@
 export const MINITEL_OBJECT_NAME = "minitel";
+export const MINITEL_SCREEN_OBJECT_NAME = "minitel-screen";
 export const BOOK_OBJECT_NAME = "livre";
 export const ENVELOPE_OBJECT_NAME = "lettre";
 export const LAMP_CORD_OBJECT_NAME = "lampe-voile";
@@ -16,6 +17,7 @@ function createHitChecker(name) {
 }
 
 export const isMinitelHit = createHitChecker(MINITEL_OBJECT_NAME);
+export const isMinitelScreenHit = createHitChecker(MINITEL_SCREEN_OBJECT_NAME);
 export const isBookHit = createHitChecker(BOOK_OBJECT_NAME);
 export const isEnvelopeHit = createHitChecker(ENVELOPE_OBJECT_NAME);
 export const isLampCordHit = createHitChecker(LAMP_CORD_OBJECT_NAME);

@@ -20,6 +20,7 @@ import {
   ENVELOPE_OBJECT_NAME,
 } from "./interactive-objects.js";
 import { useHoverUi } from "./hover-ui-context.jsx";
+import TerminalTexture from "./TerminalTexture.jsx";
 
 RectAreaLightUniformsLib.init();
 
@@ -416,6 +417,10 @@ export default function Model(props) {
   return (
     <group {...props} dispose={null}>
       <primitive object={gltfScene} />
+      <TerminalTexture
+        gltfScene={gltfScene}
+        isTerminalActive={activeCamera === "cam-terminal"}
+      />
       <rectAreaLight
         position={[al1.x, al1.y, al1.z]}
         intensity={al1.intensity}
