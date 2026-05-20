@@ -105,12 +105,42 @@ const W = 512;
 const H = 256;
 const PADDING = 20;
 const LINE_HEIGHT = 22;
-const FONT = "16px monospace";
+const FONT = "bold 15px monospace";
 const COLOR_BG = "#020802";
 const COLOR_TEXT = "#c8ffb0";
 const COLOR_CHOICE = "#7dcc7d";
-const COLOR_DIM = "rgba(200,255,176,0.45)";
+const COLOR_HISTORY = "rgba(200,255,176,0.5)";
+const COLOR_RESPONSE = "rgba(200,255,176,0.3)";
 const TYPEWRITER_SPEED = 30;
+
+function wrapText(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return [text];
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth) {
+      if (current) lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [text];
+}
+
+function drawGlowText(ctx, text, x, y, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.shadowColor = "rgba(150,255,120,0.8)";
+  ctx.shadowBlur = 8;
+  ctx.fillText(text, x, y);
+  ctx.shadowBlur = 0;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
 
 function drawTerminal(ctx, state) {
   const {
@@ -126,35 +156,37 @@ function drawTerminal(ctx, state) {
   ctx.fillStyle = COLOR_BG;
   ctx.fillRect(0, 0, W, H);
 
-  for (let y = 0; y < H; y += 4) {
-    ctx.fillStyle = "rgba(0,0,0,0.12)";
-    ctx.fillRect(0, y, W, 2);
+  for (let sy = 0; sy < H; sy += 4) {
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.fillRect(0, sy, W, 1);
   }
 
-  ctx.fillStyle = "#1c3a1c";
+  ctx.fillStyle = "#0a1a0a";
   ctx.fillRect(0, 0, W, 24);
-  ctx.fillStyle = "#3d6e3d";
-  ctx.font = "12px monospace";
-  ctx.fillText(header, PADDING, 16);
+  ctx.font = "bold 12px monospace";
+  drawGlowText(ctx, header, PADDING, 16, "#3d6e3d");
 
   let y = 24 + PADDING;
-
   ctx.font = FONT;
+
   for (const entry of history) {
     if (y > H - 60) break;
-    ctx.fillStyle =
-      entry.type === "response" ? COLOR_DIM : "rgba(200,255,176,0.7)";
-    const text = entry.type === "response" ? `  > ${entry.text}` : entry.text;
-    ctx.fillText(text, PADDING, y);
-    y += LINE_HEIGHT;
+    const color = entry.type === "response" ? COLOR_RESPONSE : COLOR_HISTORY;
+    const text = entry.type === "response" ? `> ${entry.text}` : entry.text;
+    const wrapped = wrapText(ctx, text, 470);
+    for (const line of wrapped) {
+      if (y > H - 60) break;
+      drawGlowText(ctx, line, PADDING, y, color);
+      y += LINE_HEIGHT;
+    }
   }
 
   if (currentLine) {
-    ctx.fillStyle = COLOR_TEXT;
-    ctx.fillText(displayed, PADDING, y);
+    drawGlowText(ctx, displayed, PADDING, y, COLOR_TEXT);
     if (cursorVisible) {
       const w = ctx.measureText(displayed).width;
-      ctx.fillRect(PADDING + w + 2, y - 14, 8, 16);
+      ctx.fillStyle = COLOR_TEXT;
+      ctx.fillText("█", PADDING + w + 2, y);
     }
     y += LINE_HEIGHT;
   }
@@ -162,10 +194,12 @@ function drawTerminal(ctx, state) {
   if (showChoices && choices) {
     y += 4;
     choices.forEach((choice, i) => {
-      ctx.fillStyle = COLOR_CHOICE;
-      ctx.font = FONT;
-      ctx.fillText(`[${i + 1}] ${choice}`, PADDING, y);
-      y += LINE_HEIGHT;
+      const choiceText = `[${i + 1}] ${choice}`;
+      const wrapped = wrapText(ctx, choiceText, 470);
+      for (const line of wrapped) {
+        drawGlowText(ctx, line, PADDING, y, COLOR_CHOICE);
+        y += LINE_HEIGHT;
+      }
     });
   }
 }
@@ -175,6 +209,9 @@ export default function TerminalTexture({ gltfScene, isTerminalActive }) {
   const textureRef = useRef(null);
   const meshRef = useRef(null);
   const originalMapRef = useRef(null);
+  const originalEmissiveMapRef = useRef(null);
+  const originalEmissiveRef = useRef(null);
+  const originalEmissiveIntensityRef = useRef(null);
   const stateRef = useRef({
     sceneId: "scene_0",
     lineIndex: 0,
@@ -206,7 +243,11 @@ export default function TerminalTexture({ gltfScene, isTerminalActive }) {
     gltfScene.traverse((obj) => {
       if (obj.isMesh && obj.name === "minitel-screen") {
         meshRef.current = obj;
-        originalMapRef.current = obj.material.map;
+        const m = obj.material;
+        originalMapRef.current = m.map;
+        originalEmissiveMapRef.current = m.emissiveMap;
+        originalEmissiveRef.current = m.emissive.clone();
+        originalEmissiveIntensityRef.current = m.emissiveIntensity;
       }
     });
   }, [gltfScene]);
@@ -227,11 +268,18 @@ export default function TerminalTexture({ gltfScene, isTerminalActive }) {
       s.dirty = true;
       s.header = "TELEMATIQUE";
 
-      mesh.material.map = textureRef.current;
-      mesh.material.needsUpdate = true;
+      const m = mesh.material;
+      m.emissiveMap = textureRef.current;
+      m.emissive.set("#ffffff");
+      m.emissiveIntensity = 1;
+      m.needsUpdate = true;
     } else {
-      mesh.material.map = originalMapRef.current;
-      mesh.material.needsUpdate = true;
+      const m = mesh.material;
+      m.emissiveMap = originalEmissiveMapRef.current;
+      if (originalEmissiveRef.current) m.emissive.copy(originalEmissiveRef.current);
+      m.emissiveIntensity = originalEmissiveIntensityRef.current ?? 1;
+      m.map = originalMapRef.current;
+      m.needsUpdate = true;
     }
   }, [isTerminalActive]);
 

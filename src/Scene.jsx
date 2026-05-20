@@ -1,8 +1,10 @@
-import { useRef, useEffect, useLayoutEffect } from "react";
-import { useGLTF, useCursor } from "@react-three/drei";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
+import { useGLTF, useCursor, Html } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useControls } from "leva";
 import {
+  Box3,
+  Euler,
   MathUtils,
   PerspectiveCamera,
   Quaternion,
@@ -13,6 +15,7 @@ import {
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 import {
   isMinitelHit,
+  isMinitelScreenHit,
   isBookHit,
   isEnvelopeHit,
   isLampCordHit,
@@ -20,7 +23,8 @@ import {
   ENVELOPE_OBJECT_NAME,
 } from "./interactive-objects.js";
 import { useHoverUi } from "./hover-ui-context.jsx";
-import TerminalTexture from "./TerminalTexture.jsx";
+import { useTerminal } from "./terminal-context.jsx";
+import Terminal from "./Terminal.jsx";
 
 RectAreaLightUniformsLib.init();
 
@@ -115,6 +119,9 @@ export default function Model(props) {
   const activeCameraRef = useRef(activeCamera);
   /** Caméra Leva juste avant passage en cam-terminal (clic minitel ou panneau). */
   const cameraBeforeTerminalRef = useRef("cam-main");
+  const { isTerminalOpen, setIsTerminalOpen } = useTerminal();
+  const minitelScreenRef = useRef(null);
+  const [terminalAnchor, setTerminalAnchor] = useState(null);
 
   const [camPos, setCamPos] = useControls("Position caméra", () => ({
     x: { value: -0.989, min: -20, max: 20, step: 0.001 },
@@ -131,13 +138,28 @@ export default function Model(props) {
     height: { value: 2, min: 0.1, max: 10, step: 0.1 },
   });
 
+  const terminalUi = useControls("Terminal écran", {
+    distanceFactor: { label: "Échelle", value: 8, min: 0.2, max: 40, step: 0.1 },
+    offsetX: { label: "Décalage X", value: 0, min: -0.5, max: 0.5, step: 0.001 },
+    offsetY: { label: "Décalage Y", value: 0, min: -0.5, max: 0.5, step: 0.001 },
+    offsetZ: { label: "Décalage Z", value: 0, min: -0.5, max: 0.5, step: 0.001 },
+  });
+
   useEffect(() => {
     const prev = activeCameraRef.current;
     if (activeCamera === "cam-terminal" && prev !== "cam-terminal") {
       cameraBeforeTerminalRef.current = prev;
     }
     activeCameraRef.current = activeCamera;
+    if (activeCamera !== "cam-terminal") setIsTerminalOpen(false);
   }, [activeCamera]);
+
+  // Quand le terminal se ferme depuis son propre [ESC], on revient à la caméra précédente
+  useEffect(() => {
+    if (!isTerminalOpen && activeCameraRef.current === "cam-terminal") {
+      setPointLightControls({ activeCamera: cameraBeforeTerminalRef.current });
+    }
+  }, [isTerminalOpen, setPointLightControls]);
 
   const lastAspectRef = useRef({ w: 0, h: 0 });
 
@@ -195,6 +217,7 @@ export default function Model(props) {
         y: target.position.y,
         z: target.position.z,
       });
+      if (target.name === "cam-terminal") setIsTerminalOpen(true);
     }
   });
 
@@ -257,6 +280,7 @@ export default function Model(props) {
       if (
         hit &&
         (isMinitelHit(hit) ||
+          isMinitelScreenHit(hit) ||
           isBookHit(hit) ||
           isEnvelopeHit(hit) ||
           isLampCordHit(hit))
@@ -271,7 +295,7 @@ export default function Model(props) {
       if (event.button !== 0) return;
       const hit = raycast(event);
 
-      if (hit && isMinitelHit(hit)) {
+      if (hit && (isMinitelHit(hit) || isMinitelScreenHit(hit))) {
         setPointLightControls({ activeCamera: "cam-terminal" });
         return;
       }
@@ -366,9 +390,28 @@ export default function Model(props) {
         floatingObjectsMapRef.current.set(obj.name, obj);
         obj.userData.baseY = obj.position.y;
       }
+      if (obj.isMesh && obj.name === "minitel-screen") {
+        minitelScreenRef.current = obj;
+      }
     });
     const terminalCam = cameras.current["cam-terminal"];
     if (terminalCam) terminalCam.position.set(3.82, 1.004, -0.884);
+
+    const screenMesh = minitelScreenRef.current;
+    if (screenMesh && terminalCam) {
+      screenMesh.updateWorldMatrix(true, false);
+      terminalCam.updateWorldMatrix(true, true);
+      const center = new Box3()
+        .setFromObject(screenMesh)
+        .getCenter(new Vector3());
+      const euler = new Euler().setFromQuaternion(
+        terminalCam.getWorldQuaternion(new Quaternion()),
+      );
+      setTerminalAnchor({
+        position: [center.x, center.y, center.z],
+        rotation: [euler.x, euler.y, euler.z],
+      });
+    }
 
     const defaultCam = cameras.current["cam-main"];
     if (defaultCam) {
@@ -417,10 +460,20 @@ export default function Model(props) {
   return (
     <group {...props} dispose={null}>
       <primitive object={gltfScene} />
-      <TerminalTexture
-        gltfScene={gltfScene}
-        isTerminalActive={activeCamera === "cam-terminal"}
-      />
+      {isTerminalOpen && terminalAnchor && (
+        <Html
+          transform
+          distanceFactor={terminalUi.distanceFactor}
+          position={[
+            terminalAnchor.position[0] + terminalUi.offsetX,
+            terminalAnchor.position[1] + terminalUi.offsetY,
+            terminalAnchor.position[2] + terminalUi.offsetZ,
+          ]}
+          rotation={terminalAnchor.rotation}
+        >
+          <Terminal />
+        </Html>
+      )}
       <rectAreaLight
         position={[al1.x, al1.y, al1.z]}
         intensity={al1.intensity}
