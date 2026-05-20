@@ -43,7 +43,7 @@ function setNodeEmissive(node, on) {
 }
 
 export default function Model(props) {
-  const { scene: gltfScene } = useGLTF("/chambre_opt.glb");
+  const { scene: gltfScene } = useGLTF("/chambre.glb");
   const { set, size, gl, camera } = useThree();
   const { hoverHint, setHoverHint } = useHoverUi();
   useCursor(!!hoverHint);
