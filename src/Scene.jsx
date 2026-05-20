@@ -11,7 +11,14 @@ import {
   Vector3,
 } from "three";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
-import { isMinitelHit } from "./interactive-objects.js";
+import {
+  isMinitelHit,
+  isBookHit,
+  isEnvelopeHit,
+  isLampCordHit,
+  BOOK_OBJECT_NAME,
+  ENVELOPE_OBJECT_NAME,
+} from "./interactive-objects.js";
 import { useHoverUi } from "./hover-ui-context.jsx";
 
 RectAreaLightUniformsLib.init();
@@ -20,6 +27,19 @@ const CAMERA_BLEND_MS = 2200;
 
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function setNodeEmissive(node, on) {
+  node.traverse((obj) => {
+    if (!obj.isMesh) return;
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    mats.forEach((mat) => {
+      if (mat.emissive !== undefined) {
+        mat.emissive.set(on ? "#fce29a" : "#000000");
+        mat.emissiveIntensity = on ? 0.5 : 0;
+      }
+    });
+  });
 }
 
 export default function Model(props) {
@@ -49,6 +69,11 @@ export default function Model(props) {
   });
   const tmpPos = useRef(new Vector3()).current;
   const tmpQuat = useRef(new Quaternion()).current;
+
+  const floatingNodesRef = useRef(new Set());
+  const floatingObjectsMapRef = useRef(new Map());
+  const lampOnRef = useRef(true);
+  const pointIntensityRef = useRef(25);
 
   const { normalScale } = useControls("Matériaux", {
     normalScale: {
@@ -126,6 +151,16 @@ export default function Model(props) {
         state.camera.aspect = width / height;
         state.camera.updateProjectionMatrix();
       }
+    }
+
+    if (floatingNodesRef.current.size > 0) {
+      const t = state.clock.getElapsedTime();
+      floatingNodesRef.current.forEach((name) => {
+        const node = floatingObjectsMapRef.current.get(name);
+        if (node)
+          node.position.y =
+            node.userData.baseY + ((1 - Math.cos(t * 2.0)) / 2) * 0.06;
+      });
     }
 
     if (!b.active || !b.target) return;
@@ -207,18 +242,24 @@ export default function Model(props) {
 
     const clearHover = () => setHoverHint(null);
 
-    const raycastMinitel = (event) => {
+    const raycast = (event) => {
       const rect = el.getBoundingClientRect();
       ndc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       ndc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
       const hits = raycaster.intersectObject(gltfScene, true);
-      const firstMesh = hits.find((h) => h.object?.isMesh);
-      return Boolean(firstMesh && isMinitelHit(firstMesh.object));
+      return hits.find((h) => h.object?.isMesh)?.object ?? null;
     };
 
     const onPointerMove = (event) => {
-      if (raycastMinitel(event)) {
+      const hit = raycast(event);
+      if (
+        hit &&
+        (isMinitelHit(hit) ||
+          isBookHit(hit) ||
+          isEnvelopeHit(hit) ||
+          isLampCordHit(hit))
+      ) {
         setHoverHint({ x: event.clientX, y: event.clientY });
       } else {
         setHoverHint(null);
@@ -227,10 +268,38 @@ export default function Model(props) {
 
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
-      if (raycastMinitel(event)) {
+      const hit = raycast(event);
+
+      if (hit && isMinitelHit(hit)) {
         setPointLightControls({ activeCamera: "cam-terminal" });
         return;
       }
+
+      if (hit && (isBookHit(hit) || isEnvelopeHit(hit))) {
+        const name = isBookHit(hit) ? BOOK_OBJECT_NAME : ENVELOPE_OBJECT_NAME;
+        const node = floatingObjectsMapRef.current.get(name);
+        if (node) {
+          if (floatingNodesRef.current.has(name)) {
+            floatingNodesRef.current.delete(name);
+            node.position.y = node.userData.baseY;
+            setNodeEmissive(node, false);
+          } else {
+            floatingNodesRef.current.add(name);
+            setNodeEmissive(node, true);
+          }
+        }
+        return;
+      }
+
+      if (hit && isLampCordHit(hit)) {
+        lampOnRef.current = !lampOnRef.current;
+        if (pointLightRef.current)
+          pointLightRef.current.intensity = lampOnRef.current
+            ? pointIntensityRef.current
+            : 0;
+        return;
+      }
+
       if (activeCameraRef.current === "cam-terminal") {
         setPointLightControls({
           activeCamera: cameraBeforeTerminalRef.current,
@@ -292,6 +361,10 @@ export default function Model(props) {
         obj.shadow.bias = -0.0005;
         obj.shadow.normalBias = shadowNormalBias;
       }
+      if (obj.name === BOOK_OBJECT_NAME || obj.name === ENVELOPE_OBJECT_NAME) {
+        floatingObjectsMapRef.current.set(obj.name, obj);
+        obj.userData.baseY = obj.position.y;
+      }
     });
     const terminalCam = cameras.current["cam-terminal"];
     if (terminalCam) terminalCam.position.set(3.82, 1.004, -0.884);
@@ -316,7 +389,9 @@ export default function Model(props) {
   }, [camPos.x, camPos.y, camPos.z, activeCamera]);
 
   useEffect(() => {
-    if (pointLightRef.current) pointLightRef.current.intensity = pointIntensity;
+    pointIntensityRef.current = pointIntensity;
+    if (pointLightRef.current)
+      pointLightRef.current.intensity = lampOnRef.current ? pointIntensity : 0;
   }, [pointIntensity]);
 
   useEffect(() => {
@@ -353,5 +428,5 @@ export default function Model(props) {
 }
 
 useGLTF.setDecoderPath(
-  "https://www.gstatic.com/draco/versioned/decoders/1.5.6/",
+  "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
 );

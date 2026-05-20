@@ -13,7 +13,6 @@ import {
 import { ToneMappingMode } from "postprocessing";
 import { PCFShadowMap } from "three";
 import { HoverTooltipOverlay } from "./hover-ui-context.jsx";
-import { LoaderOverlay, LoadingReporter } from "./loading-context.jsx";
 
 function App() {
   const { aoIntensity, aoRadius, bloomIntensity } = useControls(
@@ -34,7 +33,7 @@ function App() {
         max: 3,
         step: 0.05,
       },
-    },
+    }
   );
 
   return (
@@ -45,7 +44,6 @@ function App() {
         shadows={{ type: PCFShadowMap }}
         className="w-svw! h-svh!"
       >
-        <LoadingReporter />
         <Suspense fallback={null}>
           <Scene />
         </Suspense>
@@ -68,7 +66,6 @@ function App() {
         </EffectComposer>
         <Perf position="top-left" />
       </Canvas>
-      <LoaderOverlay />
       <HoverTooltipOverlay />
     </>
   );

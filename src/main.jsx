@@ -7,10 +7,8 @@ import { LoadingProvider } from "./loading-context.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <LoadingProvider>
-      <HoverUiProvider>
-        <App />
-      </HoverUiProvider>
-    </LoadingProvider>
-  </StrictMode>,
+    <HoverUiProvider>
+      <App />
+    </HoverUiProvider>
+  </StrictMode>
 );
