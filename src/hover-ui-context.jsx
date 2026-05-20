@@ -1,8 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- context + hook + overlay */
-/**
- * Indication visuelle au survol du minitel (hors <Canvas> pour R3F).
- * Icône blanche : lisible sur la scène sombre ; le noir du PNG disparaît visuellement avec mix-blend-mode screen.
- */
 import { createContext, useContext, useMemo, useState } from "react";
 
 const HOVER_ICON_SRC = "/icon_souris_click_blanc.png";

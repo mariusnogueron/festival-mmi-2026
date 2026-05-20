@@ -4,13 +4,14 @@ import "./index.css";
 import App from "./App.jsx";
 import { HoverUiProvider } from "./hover-ui-context.jsx";
 import { LoadingProvider } from "./loading-context.jsx";
+import { TerminalProvider } from "./terminal-context.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <LoadingProvider>
-      <HoverUiProvider>
+    <HoverUiProvider>
+      <TerminalProvider>
         <App />
-      </HoverUiProvider>
-    </LoadingProvider>
-  </StrictMode>,
+      </TerminalProvider>
+    </HoverUiProvider>
+  </StrictMode>
 );
