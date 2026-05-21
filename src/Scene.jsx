@@ -407,7 +407,10 @@ export default function Model(props) {
       if (mat) {
         mat.color.lerp(BLACK, 0.008);
         if (mat.emissive) mat.emissive.lerp(BLACK, 0.008);
-        mat.emissiveIntensity = Math.max(0, (mat.emissiveIntensity ?? 0) - 0.008);
+        mat.emissiveIntensity = Math.max(
+          0,
+          (mat.emissiveIntensity ?? 0) - 0.008,
+        );
       }
       endingFrameCountRef.current += 1;
       if (endingFrameCountRef.current === 180) {
@@ -920,4 +923,4 @@ useGLTF.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.6/",
 );
 
-//
+////
