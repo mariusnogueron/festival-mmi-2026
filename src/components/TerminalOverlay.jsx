@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTerminal } from "../terminal-context.jsx";
 
 const SCENES = {
     scene_0: {
@@ -99,9 +100,11 @@ const SCENES = {
     },
   };
 
-const TYPEWRITER_SPEED = 40;
+const TYPEWRITER_SPEED = 30;
 
-export default function TerminalOverlay({ isTerminalActive, screenPos, screenSize }) {
+export default function TerminalOverlay({ screenPos, screenSize }) {
+  const { isTerminalActive, terminalEverUsed, setTerminalEverUsed } =
+    useTerminal();
   const [renderState, setRenderState] = useState(null);
   const stateRef = useRef({
     sceneId: "scene_0",
@@ -111,6 +114,9 @@ export default function TerminalOverlay({ isTerminalActive, screenPos, screenSiz
     showChoices: false,
     selectedChoice: 0,
     header: "TELEMATIQUE",
+    freezeUntil: null,
+    autoAdvanceAt: null,
+    nextLineAt: null,
   });
   const rafRef = useRef(null);
   const lastTypewriterRef = useRef(0);
@@ -119,20 +125,9 @@ export default function TerminalOverlay({ isTerminalActive, screenPos, screenSiz
   useEffect(() => {
     if (!isTerminalActive) {
       cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
       return;
     }
-    const s = stateRef.current;
-    s.sceneId = "scene_0";
-    s.lineIndex = 0;
-    s.charIndex = 0;
-    s.history = [];
-    s.showChoices = false;
-    s.selectedChoice = 0;
-    s.header = "TELEMATIQUE";
-    s.freezeUntil = null;
-    s.autoAdvanceAt = null;
-    s.nextLineAt = null;
-    lastTypewriterRef.current = 0;
 
     const tick = (now) => {
       const s = stateRef.current;
@@ -165,7 +160,7 @@ export default function TerminalOverlay({ isTerminalActive, screenPos, screenSiz
           } else if (!scene.freeze && scene.choices) {
             s.showChoices = true;
           } else if (!scene.freeze && !scene.choices && scene.next && scene.next !== "scene_end") {
-            if (!s.autoAdvanceAt) s.autoAdvanceAt = now + 900;
+            if (!s.autoAdvanceAt) s.autoAdvanceAt = now + 2200;
             if (now >= s.autoAdvanceAt) {
               s.history.push({ type: "prompt", text: currentLine });
               s.sceneId = scene.next;
@@ -175,7 +170,7 @@ export default function TerminalOverlay({ isTerminalActive, screenPos, screenSiz
             }
           }
         } else {
-          if (!s.nextLineAt) s.nextLineAt = now + 600;
+          if (!s.nextLineAt) s.nextLineAt = now + 1000;
           if (now >= s.nextLineAt) {
             s.history.push({ type: "prompt", text: currentLine });
             s.lineIndex++;
@@ -234,6 +229,7 @@ export default function TerminalOverlay({ isTerminalActive, screenPos, screenSiz
   }, [renderState]);
 
   function confirmChoice(s, scene) {
+    if (!terminalEverUsed) setTerminalEverUsed(true);
     s.history.push({ type: "prompt", text: scene.lines[scene.lines.length - 1] });
     s.history.push({ type: "response", text: scene.choices[s.selectedChoice] });
     s.showChoices = false;
@@ -334,6 +330,22 @@ export default function TerminalOverlay({ isTerminalActive, screenPos, screenSiz
           </div>
         )}
       </div>
+
+      {showChoices && (
+        <div
+          style={{
+            color: "#2d5a2d",
+            fontSize: "10px",
+            fontFamily: "monospace",
+            textAlign: "center",
+            padding: "4px 0",
+            borderTop: "1px solid #1a3a1a",
+            flexShrink: 0,
+          }}
+        >
+          ↑ ↓  naviguer   •   Entrée / 1 2 3  choisir
+        </div>
+      )}
 
       <style>{`
         @keyframes blink { 50% { opacity: 0; } }
