@@ -71,6 +71,8 @@ const KEY_MAP = {
   9: "9",
 };
 
+const IDENTITY_QUAT = new Quaternion();
+
 const audioPools = new Map();
 
 function playSound(src, { vary = true } = {}) {
@@ -142,9 +144,17 @@ export default function Model(props) {
   const lampOnRef = useRef(true);
   const pointIntensityRef = useRef(25);
   const isTerminalActiveRef = useRef(false);
-  const screenRectRef = useRef(null);
-  const { isTerminalActive, setIsTerminalActive, setScreenRect } =
-    useTerminal();
+  const inspectedObjectRef = useRef(null);
+  const isDraggingRef = useRef(false);
+  const lastPointerRef = useRef({ x: 0, y: 0 });
+  const {
+    isTerminalActive,
+    setIsTerminalActive,
+    setScreenRect,
+    terminalEverUsed,
+    setInspectedObject,
+    setIsDraggingObject,
+  } = useTerminal();
   const drawerStateRef = useRef(createDrawerState());
   const flavorStateRef = useRef(createFlavorState());
 
@@ -272,6 +282,31 @@ export default function Model(props) {
       });
     }
 
+    const inspected = inspectedObjectRef.current;
+    if (inspected) {
+      const { mesh, phase } = inspected;
+      if (phase === "flyIn") {
+        mesh.position.lerp(inspected.targetPos, 0.08);
+        mesh.quaternion.slerp(IDENTITY_QUAT, 0.05);
+        if (mesh.position.distanceTo(inspected.targetPos) < 0.005) {
+          inspected.phase = "inspect";
+        }
+      } else if (phase === "flyOut") {
+        mesh.position.lerp(inspected.originPos, 0.08);
+        mesh.quaternion.slerp(inspected.originQuat, 0.05);
+        if (mesh.position.distanceTo(inspected.originPos) < 0.005) {
+          mesh.position.copy(inspected.originPos);
+          mesh.quaternion.copy(inspected.originQuat);
+          setNodeEmissive(mesh, false);
+          if (inspected.wasFloating) {
+            floatingNodesRef.current.add(inspected.name);
+          }
+          inspectedObjectRef.current = null;
+          setInspectedObject(null);
+        }
+      }
+    }
+
     if (!b.active || !b.target) return;
 
     const blendCam = blendCamRef.current;
@@ -368,16 +403,63 @@ export default function Model(props) {
       return hits.find((h) => h.object?.isMesh)?.object ?? null;
     };
 
+    const startInspect = (node, name) => {
+      const originPos = node.getWorldPosition(new Vector3());
+      const originQuat = node.getWorldQuaternion(new Quaternion());
+
+      const forward = camera.getWorldDirection(new Vector3());
+      const targetPos = camera
+        .getWorldPosition(new Vector3())
+        .addScaledVector(forward, 1.1);
+      targetPos.y -= 0.1;
+
+      const wasFloating = floatingNodesRef.current.has(name);
+      floatingNodesRef.current.delete(name);
+      setNodeEmissive(node, true);
+
+      inspectedObjectRef.current = {
+        mesh: node,
+        name,
+        originPos,
+        originQuat,
+        targetPos,
+        t0: performance.now(),
+        phase: "flyIn",
+        wasFloating,
+      };
+      setInspectedObject(name);
+    };
+
+    const startFlyOut = (inspected) => {
+      inspected.phase = "flyOut";
+      inspected.t0 = performance.now();
+    };
+
     const onPointerMove = (event) => {
+      if (isDraggingRef.current) {
+        const inspected = inspectedObjectRef.current;
+        if (inspected && inspected.phase === "inspect") {
+          const last = lastPointerRef.current;
+          const dx = event.clientX - last.x;
+          const dy = event.clientY - last.y;
+          inspected.mesh.rotateY(dx * 0.01);
+          inspected.mesh.rotateX(dy * 0.01);
+          last.x = event.clientX;
+          last.y = event.clientY;
+        }
+        return;
+      }
+
       const hit = raycast(event);
+      const hitsBookOrEnvelope =
+        !!hit && (isBookHit(hit) || isEnvelopeHit(hit));
       if (
         hit &&
         (isKeyboardHit(hit) ||
           isMinitelHit(hit) ||
           isMinitelScreenHit(hit) ||
-          isBookHit(hit) ||
-          isEnvelopeHit(hit) ||
           isLampCordHit(hit) ||
+          (hitsBookOrEnvelope && terminalEverUsed) ||
           getDrawerFromHit(hit) ||
           getFlavorFromHit(hit))
       ) {
@@ -389,6 +471,28 @@ export default function Model(props) {
 
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
+
+      const inspected = inspectedObjectRef.current;
+      if (inspected) {
+        if (inspected.phase === "inspect") {
+          const hit = raycast(event);
+          const hitName =
+            hit && (isBookHit(hit) || isEnvelopeHit(hit))
+              ? isBookHit(hit)
+                ? BOOK_OBJECT_NAME
+                : ENVELOPE_OBJECT_NAME
+              : null;
+          if (hitName === inspected.name) {
+            startFlyOut(inspected);
+          } else {
+            isDraggingRef.current = true;
+            lastPointerRef.current = { x: event.clientX, y: event.clientY };
+            setIsDraggingObject(true);
+          }
+        }
+        return;
+      }
+
       const hit = raycast(event);
       if (!hit) return;
 
@@ -413,18 +517,10 @@ export default function Model(props) {
       }
 
       if (isBookHit(hit) || isEnvelopeHit(hit)) {
+        if (!terminalEverUsed) return;
         const name = isBookHit(hit) ? BOOK_OBJECT_NAME : ENVELOPE_OBJECT_NAME;
         const node = floatingObjectsMapRef.current.get(name);
-        if (node) {
-          if (floatingNodesRef.current.has(name)) {
-            floatingNodesRef.current.delete(name);
-            node.position.y = node.userData.baseY;
-            setNodeEmissive(node, false);
-          } else {
-            floatingNodesRef.current.add(name);
-            setNodeEmissive(node, true);
-          }
-        }
+        if (node) startInspect(node, name);
         return;
       }
 
@@ -459,6 +555,11 @@ export default function Model(props) {
       }
     };
 
+    const onPointerUp = () => {
+      isDraggingRef.current = false;
+      setIsDraggingObject(false);
+    };
+
     const triggerKeyAnimation = (keyName) => {
       const entry = keyboardKeysRef.current.get(keyName);
       if (entry) {
@@ -468,15 +569,19 @@ export default function Model(props) {
     };
 
     const onKeyDown = (event) => {
-      if (
-        event.key === "Escape" &&
-        activeCameraRef.current === "cam-terminal"
-      ) {
-        isTerminalActiveRef.current = false;
-        setIsTerminalActive(false);
-        setPointLightControls({
-          activeCamera: cameraBeforeTerminalRef.current,
-        });
+      if (event.key === "Escape") {
+        const inspected = inspectedObjectRef.current;
+        if (inspected && inspected.phase === "inspect") {
+          startFlyOut(inspected);
+          return;
+        }
+        if (activeCameraRef.current === "cam-terminal") {
+          isTerminalActiveRef.current = false;
+          setIsTerminalActive(false);
+          setPointLightControls({
+            activeCamera: cameraBeforeTerminalRef.current,
+          });
+        }
       }
 
       if (isTerminalActiveRef.current) {
@@ -490,15 +595,25 @@ export default function Model(props) {
     el.addEventListener("pointermove", onPointerMove);
     el.addEventListener("pointerleave", clearHover);
     el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointerup", onPointerUp);
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
       el.removeEventListener("pointermove", onPointerMove);
       el.removeEventListener("pointerleave", clearHover);
       el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [gltfScene, camera, gl, setHoverHint, setPointLightControls, setSceneMessage]);
+  }, [
+    gltfScene,
+    camera,
+    gl,
+    setHoverHint,
+    setPointLightControls,
+    terminalEverUsed,
+    setSceneMessage,
+  ]);
 
   useEffect(() => {
     keyboardKeysRef.current.clear();
@@ -575,17 +690,15 @@ export default function Model(props) {
         z: defaultCam.position.z,
       });
     }
-  }, [gltfScene]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
     const computeScreenRect = () => {
       const mesh = screenMeshRef.current;
-      const terminalCam = cameras.current["cam-terminal"];
-      if (!mesh?.geometry || !terminalCam) return;
+      const cam = cameras.current["cam-terminal"];
+      if (!mesh?.geometry || !cam) return;
 
-      terminalCam.aspect = window.innerWidth / window.innerHeight;
-      terminalCam.updateProjectionMatrix();
-      terminalCam.updateWorldMatrix(true, false);
+      cam.aspect = window.innerWidth / window.innerHeight;
+      cam.updateProjectionMatrix();
+      cam.updateWorldMatrix(true, false);
 
       mesh.geometry.computeBoundingBox();
       const bb = mesh.geometry.boundingBox;
@@ -604,7 +717,7 @@ export default function Model(props) {
           i & 4 ? bb.max.z : bb.min.z,
         );
         corner.applyMatrix4(mesh.matrixWorld);
-        corner.project(terminalCam);
+        corner.project(cam);
         const xPx = (corner.x * 0.5 + 0.5) * window.innerWidth;
         const yPx = (-corner.y * 0.5 + 0.5) * window.innerHeight;
         if (xPx < minX) minX = xPx;
@@ -613,20 +726,18 @@ export default function Model(props) {
         if (yPx > maxY) maxY = yPx;
       }
 
-      const rect = {
+      setScreenRect({
         x: (minX + maxX) / 2,
         y: (minY + maxY) / 2,
         width: maxX - minX,
         height: maxY - minY,
-      };
-      screenRectRef.current = rect;
-      setScreenRect(rect);
+      });
     };
 
     computeScreenRect();
     window.addEventListener("resize", computeScreenRect);
     return () => window.removeEventListener("resize", computeScreenRect);
-  }, [gltfScene, setScreenRect]);
+  }, [gltfScene]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (cameraBlendRef.current.active) return;
@@ -660,22 +771,20 @@ export default function Model(props) {
   }, [normalScale, gltfScene]);
 
   return (
-    <>
-      <group {...props} dispose={null}>
-        <primitive object={gltfScene} />
-        <TerminalTexture
-          gltfScene={gltfScene}
-          isTerminalActive={isTerminalActive}
-        />
-        <rectAreaLight
-          position={[al1.x, al1.y, al1.z]}
-          intensity={al1.intensity}
-          width={al1.width}
-          height={al1.height}
-          rotation={[-Math.PI / 2, 0, 0]}
-        />
-      </group>
-    </>
+    <group {...props} dispose={null}>
+      <primitive object={gltfScene} />
+      <TerminalTexture
+        gltfScene={gltfScene}
+        isTerminalActive={isTerminalActive}
+      />
+      <rectAreaLight
+        position={[al1.x, al1.y, al1.z]}
+        intensity={al1.intensity}
+        width={al1.width}
+        height={al1.height}
+        rotation={[-Math.PI / 2, 0, 0]}
+      />
+    </group>
   );
 }
 
