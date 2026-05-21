@@ -1,11 +1,20 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { setSoundEnabled as syncSoundEnabled } from "./audio.js";
 
 const HubContext = createContext(null);
 
 export function HubProvider({ children }) {
   const [started, setStarted] = useState(false);
   const [exiting, setExiting] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabledState] = useState(false);
+
+  const setSoundEnabled = useCallback((updater) => {
+    setSoundEnabledState((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      syncSoundEnabled(next);
+      return next;
+    });
+  }, []);
 
   const beginExit = useCallback(() => {
     setExiting(true);
@@ -25,7 +34,7 @@ export function HubProvider({ children }) {
       beginExit,
       start,
     }),
-    [started, exiting, soundEnabled, beginExit, start],
+    [started, exiting, soundEnabled, setSoundEnabled, beginExit, start],
   );
 
   return <HubContext.Provider value={value}>{children}</HubContext.Provider>;

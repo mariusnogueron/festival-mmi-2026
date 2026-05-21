@@ -25,16 +25,8 @@ import {
   BOOK_OBJECT_NAME,
   ENVELOPE_OBJECT_NAME,
 } from "./interactive-objects.js";
-import {
-  createDrawerState,
-  getDrawerFromHit,
-  resolveDrawerMessage,
-} from "./drawer-interactions.js";
-import {
-  createFlavorState,
-  getFlavorFromHit,
-  resolveFlavorMessage,
-} from "./flavor-interactions.js";
+import { playSound } from "./audio.js";
+import { useCameraParallax } from "./hooks/useCameraParallax.js";
 import { useHoverUi } from "./hover-ui-context.jsx";
 import TerminalTexture from "./TerminalTexture.jsx";
 import { useTerminal } from "./terminal-context.jsx";
@@ -49,8 +41,6 @@ function easeInOutCubic(t) {
 
 const KEY_SOUND_SRC = "/sfx/clavier_1.mp3";
 const LIGHTBULB_SOUND_SRC = "/sfx/ampoule_2.mp3";
-const MINITEL_START_SOUND_SRC = "/sfx/allumage_pc_ancien_1.mp3";
-const MINITEL_ON_SOUND_SRC = "/sfx/vieux_pc_qui_tourne_3.mp3";
 const KEY_PRESS_DURATION_MS = 110;
 
 const KEY_MAP = {
@@ -74,28 +64,6 @@ const KEY_MAP = {
 
 const IDENTITY_QUAT = new Quaternion();
 
-const audioPools = new Map();
-
-function playSound(src, { vary = true } = {}) {
-  let pool = audioPools.get(src);
-  if (!pool) {
-    pool = {
-      audios: Array.from({ length: 8 }, () => {
-        const audio = new Audio(src);
-        audio.preload = "auto";
-        return audio;
-      }),
-      index: 0,
-    };
-    audioPools.set(src, pool);
-  }
-  const audio = pool.audios[pool.index];
-  pool.index = (pool.index + 1) % pool.audios.length;
-  audio.currentTime = 0;
-  audio.playbackRate = vary ? 0.92 + Math.random() * 0.16 : 1;
-  audio.play().catch(() => {});
-}
-
 function setNodeEmissive(node, on) {
   node.traverse((obj) => {
     if (!obj.isMesh) return;
@@ -112,7 +80,7 @@ function setNodeEmissive(node, on) {
 export default function Model(props) {
   const { scene: gltfScene } = useGLTF("/chambre.glb");
   const { set, size, gl, camera } = useThree();
-  const { hoverHint, setHoverHint, setSceneMessage } = useHoverUi();
+  const { hoverHint, setHoverHint } = useHoverUi();
   const screenMeshRef = useRef(null);
   useCursor(!!hoverHint);
 
@@ -156,8 +124,6 @@ export default function Model(props) {
     setInspectedObject,
     setIsDraggingObject,
   } = useTerminal();
-  const drawerStateRef = useRef(createDrawerState());
-  const flavorStateRef = useRef(createFlavorState());
 
   const { normalScale } = useControls("Matériaux", {
     normalScale: {
@@ -214,6 +180,18 @@ export default function Model(props) {
     z: { value: 2.656, min: -20, max: 20, step: 0.001 },
   }));
 
+  const camPosRef = useRef({ x: camPos.x, y: camPos.y, z: camPos.z });
+  camPosRef.current = camPos;
+
+  const { setPointerFromClient, resetParallaxState } = useCameraParallax({
+    activeCameraRef,
+    cameraBlendRef,
+    camerasRef: cameras,
+    camPosRef,
+    inspectedObjectRef,
+    isDraggingRef,
+  });
+
   const al1 = useControls("Area Light 1", {
     intensity: { value: 50, min: 0, max: 2000, step: 10 },
     x: { value: 0, min: -10, max: 10, step: 0.1 },
@@ -233,7 +211,10 @@ export default function Model(props) {
       setIsTerminalActive(false);
     }
     activeCameraRef.current = activeCamera;
-  }, [activeCamera]);
+    if (activeCamera !== "cam-main") {
+      resetParallaxState();
+    }
+  }, [activeCamera, resetParallaxState]);
 
   const lastAspectRef = useRef({ w: 0, h: 0 });
 
@@ -437,6 +418,8 @@ export default function Model(props) {
     };
 
     const onPointerMove = (event) => {
+      const rect = el.getBoundingClientRect();
+
       if (isDraggingRef.current) {
         const inspected = inspectedObjectRef.current;
         if (inspected && inspected.phase === "inspect") {
@@ -451,6 +434,14 @@ export default function Model(props) {
         return;
       }
 
+      if (
+        activeCameraRef.current === "cam-main" &&
+        !cameraBlendRef.current.active &&
+        !inspectedObjectRef.current
+      ) {
+        setPointerFromClient(event.clientX, event.clientY, rect);
+      }
+
       const hit = raycast(event);
       const hitsBookOrEnvelope =
         !!hit && (isBookHit(hit) || isEnvelopeHit(hit));
@@ -460,9 +451,7 @@ export default function Model(props) {
           isMinitelHit(hit) ||
           isMinitelScreenHit(hit) ||
           isLampCordHit(hit) ||
-          (hitsBookOrEnvelope && terminalEverUsed) ||
-          getDrawerFromHit(hit) ||
-          getFlavorFromHit(hit))
+          (hitsBookOrEnvelope && terminalEverUsed))
       ) {
         setHoverHint({ x: event.clientX, y: event.clientY });
       } else {
@@ -535,18 +524,6 @@ export default function Model(props) {
         return;
       }
 
-      const drawer = getDrawerFromHit(hit);
-      if (drawer) {
-        setSceneMessage(resolveDrawerMessage(drawer, drawerStateRef.current));
-        return;
-      }
-
-      const flavor = getFlavorFromHit(hit);
-      if (flavor) {
-        setSceneMessage(resolveFlavorMessage(flavor, flavorStateRef.current));
-        return;
-      }
-
       if (activeCameraRef.current === "cam-terminal") {
         isTerminalActiveRef.current = false;
         setIsTerminalActive(false);
@@ -613,7 +590,7 @@ export default function Model(props) {
     setHoverHint,
     setPointLightControls,
     terminalEverUsed,
-    setSceneMessage,
+    setPointerFromClient,
   ]);
 
   useEffect(() => {
@@ -743,8 +720,12 @@ export default function Model(props) {
   useEffect(() => {
     if (cameraBlendRef.current.active) return;
     const cam = cameras.current[activeCamera];
-    if (cam) cam.position.set(camPos.x, camPos.y, camPos.z);
-  }, [camPos.x, camPos.y, camPos.z, activeCamera]);
+    if (!cam) return;
+    cam.position.set(camPos.x, camPos.y, camPos.z);
+    if (activeCamera === "cam-main") {
+      resetParallaxState();
+    }
+  }, [camPos.x, camPos.y, camPos.z, activeCamera, resetParallaxState]);
 
   useEffect(() => {
     pointIntensityRef.current = pointIntensity;
