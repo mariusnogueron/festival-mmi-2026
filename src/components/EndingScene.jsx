@@ -1,6 +1,5 @@
 import { useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
-import { Vector3 } from "three";
 import { useTerminal } from "../terminal-context.jsx";
 
 export default function EndingScene({ minitelScreenRef }) {
@@ -8,42 +7,56 @@ export default function EndingScene({ minitelScreenRef }) {
   const { scene: craneScene } = useGLTF("/crane.glb");
   const craneRef = useRef();
 
-  // Apply the dark "reflection" material once when the model loads.
   useMemo(() => {
     craneScene.traverse((obj) => {
       if (!obj.isMesh) return;
       obj.material = obj.material.clone();
-      obj.material.color?.set("#0a1a0a");
-      obj.material.emissive?.set("#1a3a1a");
-      obj.material.emissiveIntensity = 1.2;
+      obj.material.color?.set("#0c180c");
+      obj.material.emissive?.set("#2d6b2d");
+      obj.material.emissiveIntensity = 0.95;
+      obj.material.transparent = true;
+      obj.material.opacity = 0.88;
+      obj.material.depthWrite = false;
+      obj.renderOrder = 12;
     });
   }, [craneScene]);
 
-  // Place the crane once, as a static reflection facing cam-terminal.
   useEffect(() => {
     if (!craneVisible || !craneRef.current || !minitelScreenRef?.current) {
       return;
     }
+
     const crane = craneRef.current;
     const screen = minitelScreenRef.current;
 
-    const screenPos = new Vector3();
-    screen.getWorldPosition(screenPos);
+    if (crane.parent && crane.parent !== screen) {
+      crane.parent.remove(crane);
+    }
+    screen.add(crane);
 
-    // cam-terminal is fixed at this position.
-    const camPos = new Vector3(3.82, 1.004, -0.884);
-    const dir = camPos.clone().sub(screenPos).normalize();
-    const cranePos = screenPos.clone().add(dir.multiplyScalar(0.05));
-    crane.position.copy(cranePos);
+    screen.geometry?.computeBoundingBox();
+    const bb = screen.geometry?.boundingBox;
+    if (!bb) return;
 
-    crane.lookAt(camPos);
+    const width = bb.max.x - bb.min.x;
+    const height = bb.max.y - bb.min.y;
+    const centerX = (bb.max.x + bb.min.x) * 0.5;
+    const centerY = (bb.max.y + bb.min.y) * 0.5;
+    const frontZ = bb.max.z + 0.001;
 
-    screen.geometry.computeBoundingBox();
-    const box = screen.geometry.boundingBox;
-    const screenHeight =
-      (box.max.y - box.min.y) * screen.getWorldScale(new Vector3()).y;
-    const scale = screenHeight * 0.6;
-    crane.scale.set(scale, scale, scale);
+    crane.position.set(centerX, centerY, frontZ);
+    crane.rotation.set(0, 0, 0);
+
+    const scale = Math.min(width, height) * 0.52;
+    crane.scale.set(-scale, scale, scale);
+
+    const mat = Array.isArray(screen.material)
+      ? screen.material[0]
+      : screen.material;
+    if (mat?.emissive) {
+      mat.emissive.set("#142814");
+      mat.emissiveIntensity = 0.35;
+    }
   }, [craneVisible, minitelScreenRef]);
 
   if (!craneVisible) return null;

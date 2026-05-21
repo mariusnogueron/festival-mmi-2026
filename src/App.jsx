@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import Scene from "./Scene";
 import { Canvas } from "@react-three/fiber";
 import { Perf } from "r3f-perf";
@@ -19,6 +19,7 @@ import InspectHint from "./components/InspectHint.jsx";
 import { useHub } from "./hub-context.jsx";
 import WelcomeHub from "./WelcomeHub.jsx";
 import EndingScene from "./components/EndingScene.jsx";
+import { setSceneAmbientActive } from "./audio.js";
 
 function TerminalUI() {
   const { screenRect } = useTerminal();
@@ -36,8 +37,13 @@ function TerminalUI() {
 }
 
 function App() {
-  const { started, exiting } = useHub();
+  const { started, exiting, soundEnabled } = useHub();
   const { screenMeshRef } = useTerminal();
+
+  useEffect(() => {
+    setSceneAmbientActive(started && !exiting && soundEnabled);
+    return () => setSceneAmbientActive(false);
+  }, [started, exiting, soundEnabled]);
   const { aoIntensity, aoRadius, bloomIntensity } = useControls(
     "Post-processing",
     {

@@ -6,10 +6,13 @@ import { useControls } from "leva";
 import {
   Color,
   MathUtils,
+  Mesh,
+  MeshBasicMaterial,
   PerspectiveCamera,
-  PointLight,
+  PlaneGeometry,
   Quaternion,
   Raycaster,
+  RectAreaLight,
   Vector2,
   Vector3,
 } from "three";
@@ -28,7 +31,7 @@ import {
   BOOK_OBJECT_NAME,
   ENVELOPE_OBJECT_NAME,
 } from "./interactive-objects.js";
-import { playSound } from "./audio.js";
+import { playSound, setLoopingSound } from "./audio.js";
 import { useCameraParallax } from "./hooks/useCameraParallax.js";
 import { useHoverUi } from "./hover-ui-context.jsx";
 import TerminalTexture from "./TerminalTexture.jsx";
@@ -44,7 +47,9 @@ function easeInOutCubic(t) {
 
 const KEY_SOUND_SRC = "/sfx/clavier_1.mp3";
 const LIGHTBULB_SOUND_SRC = "/sfx/ampoule_2.mp3";
+const TV_SOUND_SRC = "/sfx/tv_sound.mp3";
 const KEY_PRESS_DURATION_MS = 110;
+const LAMP_LIGHT_NAME = "lampe-light";
 
 const KEY_MAP = {
   Enter: "envoi",
@@ -91,6 +96,39 @@ function setMeshEmissive(mesh, color, intensity) {
   });
 }
 
+/**
+ * @param {import("three").Object3D} teleMesh
+ */
+function setupTeleScreenLight(teleMesh) {
+  teleMesh.geometry?.computeBoundingBox();
+  const bb = teleMesh.geometry?.boundingBox;
+  if (!bb) return null;
+
+  const width = (bb.max.x - bb.min.x) * 0.62;
+  const height = (bb.max.y - bb.min.y) * 0.58;
+  const centerX = (bb.max.x + bb.min.x) * 0.5;
+  const centerY = (bb.max.y + bb.min.y) * 0.5 + height * 0.04;
+  const frontZ = bb.max.z + 0.004;
+
+  const glowMat = new MeshBasicMaterial({
+    color: 0xc8d8f0,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    toneMapped: true,
+  });
+  const glowPlane = new Mesh(new PlaneGeometry(width, height), glowMat);
+  glowPlane.position.set(centerX, centerY, frontZ);
+  teleMesh.add(glowPlane);
+
+  const rectLight = new RectAreaLight(0xd0dff5, 0, width * 0.92, height * 0.92);
+  rectLight.position.set(centerX, centerY, frontZ + 0.015);
+  rectLight.lookAt(centerX, centerY, frontZ + 0.4);
+  teleMesh.add(rectLight);
+
+  return { rectLight, glowPlane, currentIntensity: 0 };
+}
+
 const BLACK = new Color(0, 0, 0);
 
 export default function Model(props) {
@@ -100,7 +138,8 @@ export default function Model(props) {
   useCursor(!!hoverHint);
 
   const cameras = useRef({});
-  const pointLightRef = useRef(null);
+  const lampLightRef = useRef(null);
+  const lampGlowMeshesRef = useRef(/** @type {import("three").Mesh[]} */ ([]));
   const blendCamRef = useRef(new PerspectiveCamera(50, 1, 0.05, 5000));
   const cameraBlendRef = useRef({
     active: false,
@@ -132,10 +171,12 @@ export default function Model(props) {
   const isDraggingRef = useRef(false);
   const lastPointerRef = useRef({ x: 0, y: 0 });
   const tvMeshRef = useRef(null);
-  const tvScreenMeshRef = useRef(null);
   const tvOnRef = useRef(false);
-  const tvAudioRef = useRef(null);
-  const tvLightRef = useRef(null);
+  const tvScreenLightRef = useRef(
+    /** @type {{ rectLight: RectAreaLight; glowPlane: Mesh; currentIntensity: number } | null} */ (
+      null
+    ),
+  );
   const tvLightActiveRef = useRef(false);
   const minitelScreenMaterialRef = useRef(null);
   const endingFadeRef = useRef(false);
@@ -151,6 +192,7 @@ export default function Model(props) {
     setEnveloppeInspected,
     isEnding,
     setCraneVisible,
+    craneVisible,
     screenMeshRef,
   } = useTerminal();
 
@@ -243,11 +285,34 @@ export default function Model(props) {
     if (activeCamera !== "cam-main") {
       resetParallaxState();
     }
+    if (activeCamera === "cam-terminal") {
+      const inspected = inspectedObjectRef.current;
+      if (inspected?.phase === "inspect") {
+        inspected.phase = "flyOut";
+        inspected.t0 = performance.now();
+      }
+    }
   }, [activeCamera, resetParallaxState]);
 
   useEffect(() => {
     if (isEnding) endingFadeRef.current = true;
   }, [isEnding]);
+
+  const applyLampState = (on) => {
+    lampOnRef.current = on;
+    if (lampLightRef.current) {
+      lampLightRef.current.intensity = on ? pointIntensityRef.current : 0;
+    }
+    lampGlowMeshesRef.current.forEach((mesh) => {
+      setMeshEmissive(mesh, on ? "#f5d080" : "#000000", on ? 1.1 : 0);
+    });
+  };
+
+  const applyTvState = (on) => {
+    tvOnRef.current = on;
+    tvLightActiveRef.current = on;
+    setLoopingSound(TV_SOUND_SRC, on);
+  };
 
   const lastAspectRef = useRef({ w: 0, h: 0 });
 
@@ -327,16 +392,17 @@ export default function Model(props) {
       }
     }
 
-    if (tvLightRef.current) {
-      const tvTarget = tvLightActiveRef.current ? 3 : 0;
-      tvLightRef.current.intensity = MathUtils.lerp(
-        tvLightRef.current.intensity,
-        tvTarget,
-        0.05,
-      );
+    if (tvScreenLightRef.current) {
+      const target = tvLightActiveRef.current ? 1 : 0;
+      const tv = tvScreenLightRef.current;
+      tv.currentIntensity = MathUtils.lerp(tv.currentIntensity, target, 0.06);
+      tv.rectLight.intensity = tv.currentIntensity * 22;
+      if (tv.glowPlane.material instanceof MeshBasicMaterial) {
+        tv.glowPlane.material.opacity = tv.currentIntensity * 0.5;
+      }
     }
 
-    if (endingFadeRef.current) {
+    if (endingFadeRef.current && !craneVisible) {
       const mat = minitelScreenMaterialRef.current;
       if (mat) {
         mat.color.lerp(BLACK, 0.008);
@@ -552,7 +618,7 @@ export default function Model(props) {
         const entry = keyName && keyboardKeysRef.current.get(keyName);
         if (entry) {
           activeKeysRef.current.set(keyName, { t0: performance.now() });
-          playSound(KEY_SOUND_SRC, { volume: 0.25 });
+          playSound(KEY_SOUND_SRC);
         }
         return;
       }
@@ -576,35 +642,13 @@ export default function Model(props) {
       }
 
       if (isLampCordHit(hit)) {
-        lampOnRef.current = !lampOnRef.current;
-        playSound(LIGHTBULB_SOUND_SRC, { vary: false, volume: 0.4 });
-        if (pointLightRef.current)
-          pointLightRef.current.intensity = lampOnRef.current
-            ? pointIntensityRef.current
-            : 0;
+        applyLampState(!lampOnRef.current);
+        playSound(LIGHTBULB_SOUND_SRC, { vary: false });
         return;
       }
 
       if (isTvHit(hit)) {
-        tvOnRef.current = !tvOnRef.current;
-        if (tvOnRef.current) {
-          setMeshEmissive(tvScreenMeshRef.current, "#8ab4f8", 1.5);
-          if (!tvAudioRef.current) {
-            tvAudioRef.current = new Audio("/sfx/tv_sound.mp3");
-            tvAudioRef.current.loop = true;
-            tvAudioRef.current.volume = 0.15;
-          }
-          tvAudioRef.current.currentTime = 0;
-          tvAudioRef.current.play().catch(() => {});
-          tvLightActiveRef.current = true;
-        } else {
-          setMeshEmissive(tvScreenMeshRef.current, "#000000", 0);
-          if (tvAudioRef.current) {
-            tvAudioRef.current.pause();
-            tvAudioRef.current.currentTime = 0;
-          }
-          tvLightActiveRef.current = false;
-        }
+        applyTvState(!tvOnRef.current);
         return;
       }
 
@@ -680,6 +724,7 @@ export default function Model(props) {
   useEffect(() => {
     keyboardKeysRef.current.clear();
     activeKeysRef.current.clear();
+    lampGlowMeshesRef.current = [];
 
     gltfScene.traverse((obj) => {
       if (obj.isCamera) cameras.current[obj.name] = obj;
@@ -712,12 +757,15 @@ export default function Model(props) {
           ? obj.material[0]
           : obj.material;
       }
-      if (obj.isPointLight) {
-        pointLightRef.current = obj;
+      if (obj.name === LAMP_LIGHT_NAME && obj.isPointLight) {
+        lampLightRef.current = obj;
         obj.castShadow = true;
         obj.shadow.mapSize.setScalar(1024);
         obj.shadow.bias = -0.0005;
         obj.shadow.normalBias = shadowNormalBias;
+      }
+      if (obj.isMesh && LAMP_GLOW_MESHES.has(obj.name)) {
+        lampGlowMeshesRef.current.push(obj);
       }
       if (obj.name === BOOK_OBJECT_NAME || obj.name === ENVELOPE_OBJECT_NAME) {
         floatingObjectsMapRef.current.set(obj.name, obj);
@@ -745,29 +793,11 @@ export default function Model(props) {
       }
     });
 
-    if (tvMeshRef.current) {
-      tvMeshRef.current.traverse((o) => {
-        if (
-          o.isMesh &&
-          o !== tvMeshRef.current &&
-          o.name.toLowerCase().includes("ecran")
-        ) {
-          tvScreenMeshRef.current = o;
-        }
-      });
-      if (!tvScreenMeshRef.current && tvMeshRef.current.isMesh) {
-        tvScreenMeshRef.current = tvMeshRef.current;
-      }
+    if (tvMeshRef.current?.isMesh && !tvScreenLightRef.current) {
+      tvScreenLightRef.current = setupTeleScreenLight(tvMeshRef.current);
     }
 
-    if (tvScreenMeshRef.current && !tvLightRef.current) {
-      const tvLight = new PointLight("#8ab4f8", 0, 2);
-      tvLight.position.copy(
-        tvScreenMeshRef.current.getWorldPosition(new Vector3()),
-      );
-      gltfScene.add(tvLight);
-      tvLightRef.current = tvLight;
-    }
+    applyLampState(lampOnRef.current);
 
     const terminalCam = cameras.current["cam-terminal"];
     if (terminalCam) terminalCam.position.set(3.82, 1.004, -0.884);
@@ -844,17 +874,18 @@ export default function Model(props) {
 
   useEffect(() => {
     pointIntensityRef.current = pointIntensity;
-    if (pointLightRef.current)
-      pointLightRef.current.intensity = lampOnRef.current ? pointIntensity : 0;
+    if (lampLightRef.current) {
+      lampLightRef.current.intensity = lampOnRef.current ? pointIntensity : 0;
+    }
   }, [pointIntensity]);
 
   useEffect(() => {
-    if (pointLightRef.current) pointLightRef.current.color.set(pointColor);
+    if (lampLightRef.current) lampLightRef.current.color.set(pointColor);
   }, [pointColor]);
 
   useEffect(() => {
-    if (pointLightRef.current)
-      pointLightRef.current.shadow.normalBias = shadowNormalBias;
+    if (lampLightRef.current)
+      lampLightRef.current.shadow.normalBias = shadowNormalBias;
   }, [shadowNormalBias]);
 
   useEffect(() => {
