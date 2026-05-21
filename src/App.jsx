@@ -13,7 +13,7 @@ import {
 import { ToneMappingMode } from "postprocessing";
 import { PCFShadowMap } from "three";
 import { HoverTooltipOverlay, SceneMessageOverlay } from "./hover-ui-context.jsx";
-import { TerminalProvider, useTerminal } from "./terminal-context.jsx";
+import { useTerminal } from "./terminal-context.jsx";
 import TerminalOverlay from "./components/TerminalOverlay.jsx";
 import InspectHint from "./components/InspectHint.jsx";
 import { useHub } from "./hub-context.jsx";
@@ -58,7 +58,7 @@ function App() {
   );
 
   return (
-    <TerminalProvider>
+    <>
       <Canvas
         flat
         dpr={[1, 1.5]}
@@ -87,18 +87,16 @@ function App() {
         </EffectComposer>
         <Perf position="top-left" />
       </Canvas>
-      <TerminalUI />
-      <InspectHint />
-      <HoverTooltipOverlay />
       <WelcomeHub />
       {started && !exiting && (
         <>
           <TerminalUI />
+          <InspectHint />
           <HoverTooltipOverlay />
           <SceneMessageOverlay />
         </>
       )}
-    </TerminalProvider>
+    </>
   );
 }
 

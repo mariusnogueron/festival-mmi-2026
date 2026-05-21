@@ -155,9 +155,6 @@ export default function Model(props) {
     setInspectedObject,
     setIsDraggingObject,
   } = useTerminal();
-  const screenRectRef = useRef(null);
-  const { isTerminalActive, setIsTerminalActive, setScreenRect } =
-    useTerminal();
   const drawerStateRef = useRef(createDrawerState());
   const flavorStateRef = useRef(createFlavorState());
 
@@ -462,10 +459,7 @@ export default function Model(props) {
           isMinitelHit(hit) ||
           isMinitelScreenHit(hit) ||
           isLampCordHit(hit) ||
-          (hitsBookOrEnvelope && terminalEverUsed))
-          isBookHit(hit) ||
-          isEnvelopeHit(hit) ||
-          isLampCordHit(hit) ||
+          (hitsBookOrEnvelope && terminalEverUsed) ||
           getDrawerFromHit(hit) ||
           getFlavorFromHit(hit))
       ) {
@@ -618,8 +612,8 @@ export default function Model(props) {
     setHoverHint,
     setPointLightControls,
     terminalEverUsed,
+    setSceneMessage,
   ]);
-  }, [gltfScene, camera, gl, setHoverHint, setPointLightControls, setSceneMessage]);
 
   useEffect(() => {
     keyboardKeysRef.current.clear();
