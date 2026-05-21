@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CanvasTexture } from "three";
+import { useTerminal } from "./terminal-context.jsx";
+import { drawTerminalSkull } from "./terminal-skull.js";
 
 const SCENES = {
   scene_0: {
@@ -212,6 +214,7 @@ function drawTerminal(ctx, state) {
 }
 
 export default function TerminalTexture({ gltfScene, isTerminalActive }) {
+  const { craneVisible } = useTerminal();
   const canvasRef = useRef(null);
   const textureRef = useRef(null);
   const meshRef = useRef(null);
@@ -373,8 +376,38 @@ export default function TerminalTexture({ gltfScene, isTerminalActive }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isTerminalActive]);
 
+  useEffect(() => {
+    const mesh = meshRef.current;
+    const texture = textureRef.current;
+    const canvas = canvasRef.current;
+    if (!craneVisible || !mesh || !texture || !canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    drawTerminalSkull(ctx, W, H, 0);
+    texture.needsUpdate = true;
+
+    const m = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    m.map = texture;
+    m.emissiveMap = texture;
+    m.color.set(COLOR_BG);
+    m.emissive.set("#7dff7d");
+    m.emissiveIntensity = 1.35;
+    m.needsUpdate = true;
+  }, [craneVisible]);
+
   useFrame(({ clock }) => {
     if (!isTerminalActive || !canvasRef.current || !textureRef.current) return;
+
+    if (craneVisible) {
+      const ctx = canvasRef.current.getContext("2d");
+      if (ctx) {
+        drawTerminalSkull(ctx, W, H, clock.getElapsedTime());
+        textureRef.current.needsUpdate = true;
+      }
+      return;
+    }
 
     const s = stateRef.current;
     const now = clock.getElapsedTime() * 1000;

@@ -16,7 +16,6 @@ import TerminalOverlay from "./components/TerminalOverlay.jsx";
 import InspectHint from "./components/InspectHint.jsx";
 import { useHub } from "./hub-context.jsx";
 import WelcomeHub from "./WelcomeHub.jsx";
-import EndingScene from "./components/EndingScene.jsx";
 import { setSceneAmbientActive } from "./audio.js";
 import { POST_PROCESSING } from "./scene-config.js";
 
@@ -37,7 +36,6 @@ function TerminalUI() {
 
 function App() {
   const { started, exiting, soundEnabled } = useHub();
-  const { screenMeshRef } = useTerminal();
 
   useEffect(() => {
     setSceneAmbientActive(started && !exiting && soundEnabled);
@@ -55,10 +53,6 @@ function App() {
       >
         <Suspense fallback={null}>
           <Scene />
-        </Suspense>
-
-        <Suspense fallback={null}>
-          <EndingScene minitelScreenRef={screenMeshRef} />
         </Suspense>
 
         <EffectComposer multisampling={0}>
