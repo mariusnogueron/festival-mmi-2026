@@ -2,6 +2,7 @@ export const MINITEL_OBJECT_NAME = "minitel";
 export const MINITEL_SCREEN_OBJECT_NAME = "minitel-screen";
 export const BOOK_OBJECT_NAME = "livre";
 export const ENVELOPE_OBJECT_NAME = "lettre";
+export const LAMP_ROOT_OBJECT_NAME = "lampe";
 export const LAMP_CORD_OBJECT_NAME = "lampe-voile";
 export const TV_OBJECT_NAME = "tele";
 export const KEY_LETTER_OBJECT_NAME = "key";

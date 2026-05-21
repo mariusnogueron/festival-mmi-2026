@@ -1,7 +1,7 @@
-import { useRef, useEffect, useLayoutEffect } from "react";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { useGLTF, useCursor } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useControls } from "leva";
+import { SCENE_CONFIG } from "./scene-config.js";
 
 import {
   Color,
@@ -23,6 +23,7 @@ import {
   isBookHit,
   isEnvelopeHit,
   isLampCordHit,
+  LAMP_ROOT_OBJECT_NAME,
   isTvHit,
   isKeyboardHit,
   getHitKeyName,
@@ -50,6 +51,8 @@ const LIGHTBULB_SOUND_SRC = "/sfx/ampoule_2.mp3";
 const TV_SOUND_SRC = "/sfx/tv_sound.mp3";
 const KEY_PRESS_DURATION_MS = 110;
 const LAMP_LIGHT_NAME = "lampe-light";
+const LAMP_GLOW_COLOR_ON = "#ffffff";
+const LAMP_GLOW_INTENSITY_ON = 1.25;
 
 const KEY_MAP = {
   Enter: "envoi",
@@ -111,17 +114,17 @@ function setupTeleScreenLight(teleMesh) {
   const frontZ = bb.max.z + 0.004;
 
   const glowMat = new MeshBasicMaterial({
-    color: 0xc8d8f0,
+    color: 0xe8f2ff,
     transparent: true,
     opacity: 0,
     depthWrite: false,
-    toneMapped: true,
+    toneMapped: false,
   });
   const glowPlane = new Mesh(new PlaneGeometry(width, height), glowMat);
   glowPlane.position.set(centerX, centerY, frontZ);
   teleMesh.add(glowPlane);
 
-  const rectLight = new RectAreaLight(0xd0dff5, 0, width * 0.92, height * 0.92);
+  const rectLight = new RectAreaLight(0xe8f4ff, 0, width * 0.95, height * 0.95);
   rectLight.position.set(centerX, centerY, frontZ + 0.015);
   rectLight.lookAt(centerX, centerY, frontZ + 0.4);
   teleMesh.add(rectLight);
@@ -196,63 +199,21 @@ export default function Model(props) {
     screenMeshRef,
   } = useTerminal();
 
-  const { normalScale } = useControls("Matériaux", {
-    normalScale: {
-      label: "Normal map intensité",
-      value: 0.95,
-      min: 0,
-      max: 2,
-      step: 0.05,
-    },
-  });
+  const {
+    normalScale,
+    keyPressDepth,
+    pointIntensity,
+    pointColor,
+    shadowNormalBias,
+    areaLight,
+    tvLightIntensityMult,
+    tvGlowOpacityMult,
+  } = SCENE_CONFIG;
 
-  const { keyPressDepth } = useControls("Clavier", {
-    keyPressDepth: {
-      label: "Profondeur enfoncement",
-      value: 0.012,
-      min: 0,
-      max: 0.1,
-      step: 0.001,
-    },
-  });
-
-  const [
-    { activeCamera, pointIntensity, pointColor, shadowNormalBias },
-    setPointLightControls,
-  ] = useControls("Point Light", () => ({
-    activeCamera: {
-      label: "Caméra",
-      value: "cam-main",
-      options: ["cam-main", "cam-terminal"],
-    },
-    pointIntensity: {
-      label: "Intensité",
-      value: 25,
-      min: 0,
-      max: 8000,
-      step: 10,
-    },
-    pointColor: { label: "Couleur", value: "#e49f08" },
-    shadowNormalBias: {
-      label: "Shadow normal bias",
-      value: 0.05,
-      min: 0,
-      max: 0.5,
-      step: 0.005,
-    },
-  }));
-
+  const [activeCamera, setActiveCamera] = useState("cam-main");
   const activeCameraRef = useRef(activeCamera);
   const cameraBeforeTerminalRef = useRef("cam-main");
-
-  const [camPos, setCamPos] = useControls("Position caméra", () => ({
-    x: { value: -0.989, min: -20, max: 20, step: 0.001 },
-    y: { value: 3.552, min: -20, max: 20, step: 0.001 },
-    z: { value: 2.656, min: -20, max: 20, step: 0.001 },
-  }));
-
-  const camPosRef = useRef({ x: camPos.x, y: camPos.y, z: camPos.z });
-  camPosRef.current = camPos;
+  const camPosRef = useRef({ x: -0.989, y: 3.552, z: 2.656 });
 
   const { setPointerFromClient, resetParallaxState } = useCameraParallax({
     activeCameraRef,
@@ -261,15 +222,6 @@ export default function Model(props) {
     camPosRef,
     inspectedObjectRef,
     isDraggingRef,
-  });
-
-  const al1 = useControls("Area Light 1", {
-    intensity: { value: 50, min: 0, max: 2000, step: 10 },
-    x: { value: 0, min: -10, max: 10, step: 0.1 },
-    y: { value: 3, min: 0, max: 10, step: 0.1 },
-    z: { value: 0, min: -10, max: 10, step: 0.1 },
-    width: { value: 2, min: 0.1, max: 10, step: 0.1 },
-    height: { value: 2, min: 0.1, max: 10, step: 0.1 },
   });
 
   useEffect(() => {
@@ -304,7 +256,11 @@ export default function Model(props) {
       lampLightRef.current.intensity = on ? pointIntensityRef.current : 0;
     }
     lampGlowMeshesRef.current.forEach((mesh) => {
-      setMeshEmissive(mesh, on ? "#f5d080" : "#000000", on ? 1.1 : 0);
+      setMeshEmissive(
+        mesh,
+        on ? LAMP_GLOW_COLOR_ON : "#000000",
+        on ? LAMP_GLOW_INTENSITY_ON : 0,
+      );
     });
   };
 
@@ -396,9 +352,9 @@ export default function Model(props) {
       const target = tvLightActiveRef.current ? 1 : 0;
       const tv = tvScreenLightRef.current;
       tv.currentIntensity = MathUtils.lerp(tv.currentIntensity, target, 0.06);
-      tv.rectLight.intensity = tv.currentIntensity * 22;
+      tv.rectLight.intensity = tv.currentIntensity * tvLightIntensityMult;
       if (tv.glowPlane.material instanceof MeshBasicMaterial) {
-        tv.glowPlane.material.opacity = tv.currentIntensity * 0.5;
+        tv.glowPlane.material.opacity = tv.currentIntensity * tvGlowOpacityMult;
       }
     }
 
@@ -443,11 +399,11 @@ export default function Model(props) {
       target.aspect = sz.width / sz.height;
       target.updateProjectionMatrix();
       state.set({ camera: target });
-      setCamPos({
+      camPosRef.current = {
         x: target.position.x,
         y: target.position.y,
         z: target.position.z,
-      });
+      };
 
       if (targetName === "cam-terminal") {
         isTerminalActiveRef.current = true;
@@ -548,7 +504,11 @@ export default function Model(props) {
 
       if (isDraggingRef.current) {
         const inspected = inspectedObjectRef.current;
-        if (inspected && inspected.phase === "inspect") {
+        if (
+          inspected &&
+          inspected.phase === "inspect" &&
+          activeCameraRef.current !== "cam-terminal"
+        ) {
           const last = lastPointerRef.current;
           const dx = event.clientX - last.x;
           const dy = event.clientY - last.y;
@@ -571,6 +531,8 @@ export default function Model(props) {
       const hit = raycast(event);
       const hitsBookOrEnvelope =
         !!hit && (isBookHit(hit) || isEnvelopeHit(hit));
+      const canInteractBookOrEnvelope =
+        terminalEverUsed && activeCameraRef.current !== "cam-terminal";
       if (
         hit &&
         (isKeyboardHit(hit) ||
@@ -578,7 +540,7 @@ export default function Model(props) {
           isMinitelScreenHit(hit) ||
           isLampCordHit(hit) ||
           isTvHit(hit) ||
-          (hitsBookOrEnvelope && terminalEverUsed))
+          (hitsBookOrEnvelope && canInteractBookOrEnvelope))
       ) {
         setHoverHint({ x: event.clientX, y: event.clientY });
       } else {
@@ -591,6 +553,7 @@ export default function Model(props) {
 
       const inspected = inspectedObjectRef.current;
       if (inspected) {
+        if (activeCameraRef.current === "cam-terminal") return;
         if (inspected.phase === "inspect") {
           const hit = raycast(event);
           const hitName =
@@ -624,17 +587,18 @@ export default function Model(props) {
       }
 
       if (isMinitelScreenHit(hit)) {
-        setPointLightControls({ activeCamera: "cam-terminal" });
+        setActiveCamera("cam-terminal");
         return;
       }
 
       if (isMinitelHit(hit)) {
-        setPointLightControls({ activeCamera: "cam-terminal" });
+        setActiveCamera("cam-terminal");
         return;
       }
 
       if (isBookHit(hit) || isEnvelopeHit(hit)) {
         if (!terminalEverUsed) return;
+        if (activeCameraRef.current === "cam-terminal") return;
         const name = isBookHit(hit) ? BOOK_OBJECT_NAME : ENVELOPE_OBJECT_NAME;
         const node = floatingObjectsMapRef.current.get(name);
         if (node) startInspect(node, name);
@@ -655,9 +619,7 @@ export default function Model(props) {
       if (activeCameraRef.current === "cam-terminal") {
         isTerminalActiveRef.current = false;
         setIsTerminalActive(false);
-        setPointLightControls({
-          activeCamera: cameraBeforeTerminalRef.current,
-        });
+        setActiveCamera(cameraBeforeTerminalRef.current);
       }
     };
 
@@ -684,9 +646,7 @@ export default function Model(props) {
         if (activeCameraRef.current === "cam-terminal") {
           isTerminalActiveRef.current = false;
           setIsTerminalActive(false);
-          setPointLightControls({
-            activeCamera: cameraBeforeTerminalRef.current,
-          });
+          setActiveCamera(cameraBeforeTerminalRef.current);
         }
       }
 
@@ -716,7 +676,6 @@ export default function Model(props) {
     camera,
     gl,
     setHoverHint,
-    setPointLightControls,
     terminalEverUsed,
     setPointerFromClient,
   ]);
@@ -764,8 +723,10 @@ export default function Model(props) {
         obj.shadow.bias = -0.0005;
         obj.shadow.normalBias = shadowNormalBias;
       }
-      if (obj.isMesh && LAMP_GLOW_MESHES.has(obj.name)) {
-        lampGlowMeshesRef.current.push(obj);
+      if (obj.name === LAMP_ROOT_OBJECT_NAME) {
+        obj.traverse((child) => {
+          if (child.isMesh) lampGlowMeshesRef.current.push(child);
+        });
       }
       if (obj.name === BOOK_OBJECT_NAME || obj.name === ENVELOPE_OBJECT_NAME) {
         floatingObjectsMapRef.current.set(obj.name, obj);
@@ -807,11 +768,11 @@ export default function Model(props) {
       defaultCam.aspect = size.width / size.height;
       defaultCam.updateProjectionMatrix();
       set({ camera: defaultCam });
-      setCamPos({
+      camPosRef.current = {
         x: defaultCam.position.x,
         y: defaultCam.position.y,
         z: defaultCam.position.z,
-      });
+      };
     }
 
     const computeScreenRect = () => {
@@ -863,16 +824,6 @@ export default function Model(props) {
   }, [gltfScene]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (cameraBlendRef.current.active) return;
-    const cam = cameras.current[activeCamera];
-    if (!cam) return;
-    cam.position.set(camPos.x, camPos.y, camPos.z);
-    if (activeCamera === "cam-main") {
-      resetParallaxState();
-    }
-  }, [camPos.x, camPos.y, camPos.z, activeCamera, resetParallaxState]);
-
-  useEffect(() => {
     pointIntensityRef.current = pointIntensity;
     if (lampLightRef.current) {
       lampLightRef.current.intensity = lampOnRef.current ? pointIntensity : 0;
@@ -906,10 +857,10 @@ export default function Model(props) {
         isTerminalActive={isTerminalActive}
       />
       <rectAreaLight
-        position={[al1.x, al1.y, al1.z]}
-        intensity={al1.intensity}
-        width={al1.width}
-        height={al1.height}
+        position={[areaLight.x, areaLight.y, areaLight.z]}
+        intensity={areaLight.intensity}
+        width={areaLight.width}
+        height={areaLight.height}
         rotation={[-Math.PI / 2, 0, 0]}
       />
     </group>

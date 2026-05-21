@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { setHubAmbientActive } from "./audio.js";
 import { useHub } from "./hub-context.jsx";
 import "./welcome-hub.css";
 
@@ -221,12 +220,6 @@ export default function WelcomeHub() {
     };
   }, []);
 
-  useEffect(() => {
-    const hubVisible = !started && !exiting;
-    setHubAmbientActive(soundEnabled && hubVisible);
-    return () => setHubAmbientActive(false);
-  }, [soundEnabled, started, exiting]);
-
   const handleStart = useCallback(() => {
     if (phase !== "menu") return;
     if (!soundEnabled && !soundSkipped) {
@@ -269,11 +262,7 @@ export default function WelcomeHub() {
             phase={phase}
             soundEnabled={soundEnabled}
             soundWarn={soundWarn}
-            onToggleSound={() => {
-              const next = !soundEnabled;
-              setSoundEnabled(next);
-              if (next) setHubAmbientActive(true);
-            }}
+            onToggleSound={() => setSoundEnabled((v) => !v)}
             onStart={handleStart}
             onCredits={() => setCreditsOpen(true)}
           />

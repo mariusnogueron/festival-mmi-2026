@@ -1,6 +1,5 @@
 /** Gestion centralisée du son (hub + scène 3D). */
 
-const HUB_AMBIENT_SRC = "/sfx/vieux_pc_qui_tourne_3.mp3";
 const SCENE_AMBIENT_SRC = "/sfx/ambiance_piece_1.mp3";
 
 /** Volumes normalisés par fichier (0–1). */
@@ -8,7 +7,6 @@ const SFX_VOLUMES = {
   "/sfx/clavier_1.mp3": 0.32,
   "/sfx/ampoule_2.mp3": 0.38,
   "/sfx/tv_sound.mp3": 0.22,
-  "/sfx/vieux_pc_qui_tourne_3.mp3": 0.2,
   "/sfx/ambiance_piece_1.mp3": 0.14,
   "/sfx/allumage_pc_ancien_1.mp3": 0.34,
 };
@@ -18,9 +16,6 @@ const audioPools = new Map();
 
 /** @type {Map<string, HTMLAudioElement>} */
 const loopingSounds = new Map();
-
-/** @type {HTMLAudioElement | null} */
-let hubAmbient = null;
 
 /** @type {HTMLAudioElement | null} */
 let sceneAmbient = null;
@@ -64,10 +59,6 @@ function pauseLoopingSounds() {
 export function stopAllSounds() {
   pausePoolAudios();
   pauseLoopingSounds();
-  if (hubAmbient) {
-    hubAmbient.pause();
-    hubAmbient.currentTime = 0;
-  }
   if (sceneAmbient) {
     sceneAmbient.pause();
     sceneAmbient.currentTime = 0;
@@ -129,27 +120,6 @@ export function setLoopingSound(src, active, { volume } = {}) {
 
   audio.volume = volume ?? getNormalizedVolume(src);
   audio.play().catch(() => {});
-}
-
-/** @param {boolean} active */
-export function setHubAmbientActive(active) {
-  if (!active || !soundEnabled) {
-    if (hubAmbient) {
-      hubAmbient.pause();
-      hubAmbient.currentTime = 0;
-    }
-    return;
-  }
-
-  if (!hubAmbient) {
-    hubAmbient = new Audio(HUB_AMBIENT_SRC);
-    hubAmbient.loop = true;
-    hubAmbient.preload = "auto";
-  }
-
-  hubAmbient.volume = getNormalizedVolume(HUB_AMBIENT_SRC);
-  hubAmbient.currentTime = 0;
-  hubAmbient.play().catch(() => {});
 }
 
 /** @param {boolean} active */

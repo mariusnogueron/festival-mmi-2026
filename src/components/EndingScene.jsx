@@ -1,6 +1,51 @@
 import { useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
+import { Box3, DoubleSide, Vector3 } from "three";
 import { useTerminal } from "../terminal-context.jsx";
+
+const CRANE_FILL = 0.82;
+const tmpBox = new Box3();
+const tmpSize = new Vector3();
+const tmpCenter = new Vector3();
+
+/**
+ * Ajuste le crâne pour remplir l'écran minitel (bbox réelle du modèle).
+ *
+ * @param {import("three").Object3D} crane
+ * @param {import("three").Box3} screenBb
+ */
+function fitCraneOnScreen(crane, screenBb) {
+  crane.position.set(0, 0, 0);
+  crane.rotation.set(0, 0, 0);
+  crane.scale.set(1, 1, 1);
+  crane.updateMatrixWorld(true);
+
+  tmpBox.setFromObject(crane);
+  tmpBox.getSize(tmpSize);
+  if (tmpSize.x < 1e-6 || tmpSize.y < 1e-6) return;
+
+  const screenW = screenBb.max.x - screenBb.min.x;
+  const screenH = screenBb.max.y - screenBb.min.y;
+  const centerX = (screenBb.max.x + screenBb.min.x) * 0.5;
+  const centerY = (screenBb.max.y + screenBb.min.y) * 0.5;
+  const frontZ = screenBb.max.z + 0.003;
+
+  const scale = Math.min(
+    (screenW * CRANE_FILL) / tmpSize.x,
+    (screenH * CRANE_FILL) / tmpSize.y,
+  );
+  crane.scale.setScalar(scale);
+  crane.updateMatrixWorld(true);
+
+  tmpBox.setFromObject(crane);
+  tmpBox.getCenter(tmpCenter);
+
+  crane.position.set(
+    centerX - tmpCenter.x,
+    centerY - tmpCenter.y,
+    frontZ - tmpBox.min.z,
+  );
+}
 
 export default function EndingScene({ minitelScreenRef }) {
   const { craneVisible } = useTerminal();
@@ -10,13 +55,16 @@ export default function EndingScene({ minitelScreenRef }) {
   useMemo(() => {
     craneScene.traverse((obj) => {
       if (!obj.isMesh) return;
-      obj.material = obj.material.clone();
-      obj.material.color?.set("#0c180c");
-      obj.material.emissive?.set("#2d6b2d");
-      obj.material.emissiveIntensity = 0.95;
-      obj.material.transparent = true;
-      obj.material.opacity = 0.88;
-      obj.material.depthWrite = false;
+      const mat = obj.material.clone();
+      mat.color?.set("#061206");
+      mat.emissive?.set("#6dff6d");
+      mat.emissiveIntensity = 1.65;
+      mat.transparent = false;
+      mat.opacity = 1;
+      mat.depthWrite = true;
+      mat.side = DoubleSide;
+      mat.toneMapped = false;
+      obj.material = mat;
       obj.renderOrder = 12;
     });
   }, [craneScene]);
@@ -38,24 +86,14 @@ export default function EndingScene({ minitelScreenRef }) {
     const bb = screen.geometry?.boundingBox;
     if (!bb) return;
 
-    const width = bb.max.x - bb.min.x;
-    const height = bb.max.y - bb.min.y;
-    const centerX = (bb.max.x + bb.min.x) * 0.5;
-    const centerY = (bb.max.y + bb.min.y) * 0.5;
-    const frontZ = bb.max.z + 0.001;
-
-    crane.position.set(centerX, centerY, frontZ);
-    crane.rotation.set(0, 0, 0);
-
-    const scale = Math.min(width, height) * 0.52;
-    crane.scale.set(-scale, scale, scale);
+    fitCraneOnScreen(crane, bb);
 
     const mat = Array.isArray(screen.material)
       ? screen.material[0]
       : screen.material;
     if (mat?.emissive) {
-      mat.emissive.set("#142814");
-      mat.emissiveIntensity = 0.35;
+      mat.emissive.set("#1a3a1a");
+      mat.emissiveIntensity = 0.45;
     }
   }, [craneVisible, minitelScreenRef]);
 

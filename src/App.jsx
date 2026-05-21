@@ -1,8 +1,6 @@
 import { Suspense, useEffect } from "react";
 import Scene from "./Scene";
 import { Canvas } from "@react-three/fiber";
-import { Perf } from "r3f-perf";
-import { useControls } from "leva";
 import {
   EffectComposer,
   N8AO,
@@ -20,6 +18,7 @@ import { useHub } from "./hub-context.jsx";
 import WelcomeHub from "./WelcomeHub.jsx";
 import EndingScene from "./components/EndingScene.jsx";
 import { setSceneAmbientActive } from "./audio.js";
+import { POST_PROCESSING } from "./scene-config.js";
 
 function TerminalUI() {
   const { screenRect } = useTerminal();
@@ -44,26 +43,7 @@ function App() {
     setSceneAmbientActive(started && !exiting && soundEnabled);
     return () => setSceneAmbientActive(false);
   }, [started, exiting, soundEnabled]);
-  const { aoIntensity, aoRadius, bloomIntensity } = useControls(
-    "Post-processing",
-    {
-      aoIntensity: {
-        label: "AO intensité",
-        value: 6,
-        min: 0,
-        max: 20,
-        step: 0.5,
-      },
-      aoRadius: { label: "AO rayon", value: 0.9, min: 0.1, max: 5, step: 0.1 },
-      bloomIntensity: {
-        label: "Bloom",
-        value: 0.25,
-        min: 0,
-        max: 3,
-        step: 0.05,
-      },
-    }
-  );
+  const { aoIntensity, aoRadius, bloomIntensity } = POST_PROCESSING;
 
   return (
     <>
@@ -97,7 +77,6 @@ function App() {
           <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
           <SMAA />
         </EffectComposer>
-        <Perf position="top-left" />
       </Canvas>
       <WelcomeHub />
       {started && !exiting && (
