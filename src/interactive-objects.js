@@ -5,6 +5,10 @@ export const ENVELOPE_OBJECT_NAME = "lettre";
 export const LAMP_CORD_OBJECT_NAME = "lampe-voile";
 export const KEY_LETTER_OBJECT_NAME = "key";
 export const KEY_SUPPORT_OBJECT_NAME = "support";
+export const DRAWER_TOP_OBJECT_NAME = "tiroir-haut";
+export const DRAWER_BOTTOM_OBJECT_NAME = "tiroir-bas";
+export const CANAPE_OBJECT_NAME = "canape";
+export const PAINTING_OBJECT_NAME = "floating-corpse";
 
 /** @param {string} name @returns {(object3d: import('three').Object3D | null) => boolean} */
 function createHitChecker(name) {

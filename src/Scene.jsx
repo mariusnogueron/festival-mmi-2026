@@ -24,6 +24,16 @@ import {
   BOOK_OBJECT_NAME,
   ENVELOPE_OBJECT_NAME,
 } from "./interactive-objects.js";
+import {
+  createDrawerState,
+  getDrawerFromHit,
+  resolveDrawerMessage,
+} from "./drawer-interactions.js";
+import {
+  createFlavorState,
+  getFlavorFromHit,
+  resolveFlavorMessage,
+} from "./flavor-interactions.js";
 import { useHoverUi } from "./hover-ui-context.jsx";
 import TerminalTexture from "./TerminalTexture.jsx";
 import { useTerminal } from "./terminal-context.jsx";
@@ -99,7 +109,7 @@ function setNodeEmissive(node, on) {
 export default function Model(props) {
   const { scene: gltfScene } = useGLTF("/chambre.glb");
   const { set, size, gl, camera } = useThree();
-  const { hoverHint, setHoverHint } = useHoverUi();
+  const { hoverHint, setHoverHint, setSceneMessage } = useHoverUi();
   const screenMeshRef = useRef(null);
   useCursor(!!hoverHint);
 
@@ -135,6 +145,8 @@ export default function Model(props) {
   const screenRectRef = useRef(null);
   const { isTerminalActive, setIsTerminalActive, setScreenRect } =
     useTerminal();
+  const drawerStateRef = useRef(createDrawerState());
+  const flavorStateRef = useRef(createFlavorState());
 
   const { normalScale } = useControls("Matériaux", {
     normalScale: {
@@ -365,7 +377,9 @@ export default function Model(props) {
           isMinitelScreenHit(hit) ||
           isBookHit(hit) ||
           isEnvelopeHit(hit) ||
-          isLampCordHit(hit))
+          isLampCordHit(hit) ||
+          getDrawerFromHit(hit) ||
+          getFlavorFromHit(hit))
       ) {
         setHoverHint({ x: event.clientX, y: event.clientY });
       } else {
@@ -424,6 +438,18 @@ export default function Model(props) {
         return;
       }
 
+      const drawer = getDrawerFromHit(hit);
+      if (drawer) {
+        setSceneMessage(resolveDrawerMessage(drawer, drawerStateRef.current));
+        return;
+      }
+
+      const flavor = getFlavorFromHit(hit);
+      if (flavor) {
+        setSceneMessage(resolveFlavorMessage(flavor, flavorStateRef.current));
+        return;
+      }
+
       if (activeCameraRef.current === "cam-terminal") {
         isTerminalActiveRef.current = false;
         setIsTerminalActive(false);
@@ -472,7 +498,7 @@ export default function Model(props) {
       el.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [gltfScene, camera, gl, setHoverHint, setPointLightControls]);
+  }, [gltfScene, camera, gl, setHoverHint, setPointLightControls, setSceneMessage]);
 
   useEffect(() => {
     keyboardKeysRef.current.clear();

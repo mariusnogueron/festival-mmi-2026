@@ -12,9 +12,11 @@ import {
 } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import { PCFShadowMap } from "three";
-import { HoverTooltipOverlay } from "./hover-ui-context.jsx";
+import { HoverTooltipOverlay, SceneMessageOverlay } from "./hover-ui-context.jsx";
 import { TerminalProvider, useTerminal } from "./terminal-context.jsx";
 import TerminalOverlay from "./components/TerminalOverlay.jsx";
+import { useHub } from "./hub-context.jsx";
+import WelcomeHub from "./WelcomeHub.jsx";
 
 function TerminalUI() {
   const { isTerminalActive, screenRect } = useTerminal();
@@ -33,6 +35,7 @@ function TerminalUI() {
 }
 
 function App() {
+  const { started, exiting } = useHub();
   const { aoIntensity, aoRadius, bloomIntensity } = useControls(
     "Post-processing",
     {
@@ -84,8 +87,14 @@ function App() {
         </EffectComposer>
         <Perf position="top-left" />
       </Canvas>
-      <TerminalUI />
-      <HoverTooltipOverlay />
+      <WelcomeHub />
+      {started && !exiting && (
+        <>
+          <TerminalUI />
+          <HoverTooltipOverlay />
+          <SceneMessageOverlay />
+        </>
+      )}
     </TerminalProvider>
   );
 }
