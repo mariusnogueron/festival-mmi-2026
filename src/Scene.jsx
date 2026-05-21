@@ -4,8 +4,10 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useControls } from "leva";
 
 import {
+  Color,
   MathUtils,
   PerspectiveCamera,
+  PointLight,
   Quaternion,
   Raycaster,
   Vector2,
@@ -77,11 +79,23 @@ function setNodeEmissive(node, on) {
   });
 }
 
+function setMeshEmissive(mesh, color, intensity) {
+  if (!mesh) return;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  mats.forEach((mat) => {
+    if (mat.emissive !== undefined) {
+      mat.emissive.set(color);
+      mat.emissiveIntensity = intensity;
+    }
+  });
+}
+
+const BLACK = new Color(0, 0, 0);
+
 export default function Model(props) {
   const { scene: gltfScene } = useGLTF("/chambre.glb");
   const { set, size, gl, camera } = useThree();
   const { hoverHint, setHoverHint } = useHoverUi();
-  const screenMeshRef = useRef(null);
   useCursor(!!hoverHint);
 
   const cameras = useRef({});
@@ -116,6 +130,15 @@ export default function Model(props) {
   const inspectedObjectRef = useRef(null);
   const isDraggingRef = useRef(false);
   const lastPointerRef = useRef({ x: 0, y: 0 });
+  const tvMeshRef = useRef(null);
+  const tvScreenMeshRef = useRef(null);
+  const tvOnRef = useRef(false);
+  const tvAudioRef = useRef(null);
+  const tvLightRef = useRef(null);
+  const tvLightActiveRef = useRef(false);
+  const minitelScreenMaterialRef = useRef(null);
+  const endingFadeRef = useRef(false);
+  const endingFrameCountRef = useRef(0);
   const {
     isTerminalActive,
     setIsTerminalActive,
@@ -123,6 +146,11 @@ export default function Model(props) {
     terminalEverUsed,
     setInspectedObject,
     setIsDraggingObject,
+    setBookInspected,
+    setEnveloppeInspected,
+    isEnding,
+    setCraneVisible,
+    screenMeshRef,
   } = useTerminal();
 
   const { normalScale } = useControls("Matériaux", {
@@ -216,6 +244,10 @@ export default function Model(props) {
     }
   }, [activeCamera, resetParallaxState]);
 
+  useEffect(() => {
+    if (isEnding) endingFadeRef.current = true;
+  }, [isEnding]);
+
   const lastAspectRef = useRef({ w: 0, h: 0 });
 
   useFrame((state) => {
@@ -283,9 +315,36 @@ export default function Model(props) {
           if (inspected.wasFloating) {
             floatingNodesRef.current.add(inspected.name);
           }
+          if (inspected.name === BOOK_OBJECT_NAME) {
+            setBookInspected(true);
+          } else if (inspected.name === ENVELOPE_OBJECT_NAME) {
+            setEnveloppeInspected(true);
+          }
           inspectedObjectRef.current = null;
           setInspectedObject(null);
         }
+      }
+    }
+
+    if (tvLightRef.current) {
+      const tvTarget = tvLightActiveRef.current ? 3 : 0;
+      tvLightRef.current.intensity = MathUtils.lerp(
+        tvLightRef.current.intensity,
+        tvTarget,
+        0.05,
+      );
+    }
+
+    if (endingFadeRef.current) {
+      const mat = minitelScreenMaterialRef.current;
+      if (mat) {
+        mat.color.lerp(BLACK, 0.008);
+        if (mat.emissive) mat.emissive.lerp(BLACK, 0.008);
+        mat.emissiveIntensity = Math.max(0, (mat.emissiveIntensity ?? 0) - 0.008);
+      }
+      endingFrameCountRef.current += 1;
+      if (endingFrameCountRef.current === 180) {
+        setCraneVisible(true);
       }
     }
 
@@ -385,6 +444,17 @@ export default function Model(props) {
       return hits.find((h) => h.object?.isMesh)?.object ?? null;
     };
 
+    const isTvHit = (obj) => {
+      const tv = tvMeshRef.current;
+      if (!tv) return false;
+      let current = obj;
+      while (current) {
+        if (current === tv) return true;
+        current = current.parent;
+      }
+      return false;
+    };
+
     const startInspect = (node, name) => {
       const originPos = node.getWorldPosition(new Vector3());
       const originQuat = node.getWorldQuaternion(new Quaternion());
@@ -397,7 +467,7 @@ export default function Model(props) {
 
       const wasFloating = floatingNodesRef.current.has(name);
       floatingNodesRef.current.delete(name);
-      setNodeEmissive(node, true);
+      setNodeEmissive(node, false);
 
       inspectedObjectRef.current = {
         mesh: node,
@@ -451,6 +521,7 @@ export default function Model(props) {
           isMinitelHit(hit) ||
           isMinitelScreenHit(hit) ||
           isLampCordHit(hit) ||
+          isTvHit(hit) ||
           (hitsBookOrEnvelope && terminalEverUsed))
       ) {
         setHoverHint({ x: event.clientX, y: event.clientY });
@@ -491,7 +562,7 @@ export default function Model(props) {
         const entry = keyName && keyboardKeysRef.current.get(keyName);
         if (entry) {
           activeKeysRef.current.set(keyName, { t0: performance.now() });
-          playSound(KEY_SOUND_SRC);
+          playSound(KEY_SOUND_SRC, { volume: 0.25 });
         }
         return;
       }
@@ -516,11 +587,34 @@ export default function Model(props) {
 
       if (isLampCordHit(hit)) {
         lampOnRef.current = !lampOnRef.current;
-        playSound(LIGHTBULB_SOUND_SRC, { vary: false });
+        playSound(LIGHTBULB_SOUND_SRC, { vary: false, volume: 0.4 });
         if (pointLightRef.current)
           pointLightRef.current.intensity = lampOnRef.current
             ? pointIntensityRef.current
             : 0;
+        return;
+      }
+
+      if (isTvHit(hit)) {
+        tvOnRef.current = !tvOnRef.current;
+        if (tvOnRef.current) {
+          setMeshEmissive(tvScreenMeshRef.current, "#8ab4f8", 1.5);
+          if (!tvAudioRef.current) {
+            tvAudioRef.current = new Audio("/sfx/tv_sound.mp3");
+            tvAudioRef.current.loop = true;
+            tvAudioRef.current.volume = 0.15;
+          }
+          tvAudioRef.current.currentTime = 0;
+          tvAudioRef.current.play().catch(() => {});
+          tvLightActiveRef.current = true;
+        } else {
+          setMeshEmissive(tvScreenMeshRef.current, "#000000", 0);
+          if (tvAudioRef.current) {
+            tvAudioRef.current.pause();
+            tvAudioRef.current.currentTime = 0;
+          }
+          tvLightActiveRef.current = false;
+        }
         return;
       }
 
@@ -624,6 +718,9 @@ export default function Model(props) {
       }
       if (obj.name === "minitel-screen") {
         screenMeshRef.current = obj;
+        minitelScreenMaterialRef.current = Array.isArray(obj.material)
+          ? obj.material[0]
+          : obj.material;
       }
       if (obj.isPointLight) {
         pointLightRef.current = obj;
@@ -635,6 +732,14 @@ export default function Model(props) {
       if (obj.name === BOOK_OBJECT_NAME || obj.name === ENVELOPE_OBJECT_NAME) {
         floatingObjectsMapRef.current.set(obj.name, obj);
         obj.userData.baseY = obj.position.y;
+      }
+
+      const lowerName = obj.name.toLowerCase();
+      if (
+        !tvMeshRef.current &&
+        (lowerName.includes("tv") || lowerName.includes("television"))
+      ) {
+        tvMeshRef.current = obj;
       }
 
       const isKeyLetter = obj.name.startsWith(`${KEY_LETTER_OBJECT_NAME}-`);
@@ -653,6 +758,30 @@ export default function Model(props) {
         entry.nodes.push(obj);
       }
     });
+
+    if (tvMeshRef.current) {
+      tvMeshRef.current.traverse((o) => {
+        if (
+          o.isMesh &&
+          o !== tvMeshRef.current &&
+          o.name.toLowerCase().includes("screen")
+        ) {
+          tvScreenMeshRef.current = o;
+        }
+      });
+      if (!tvScreenMeshRef.current && tvMeshRef.current.isMesh) {
+        tvScreenMeshRef.current = tvMeshRef.current;
+      }
+    }
+
+    if (tvScreenMeshRef.current && !tvLightRef.current) {
+      const tvLight = new PointLight("#8ab4f8", 0, 2);
+      tvLight.position.copy(
+        tvScreenMeshRef.current.getWorldPosition(new Vector3()),
+      );
+      gltfScene.add(tvLight);
+      tvLightRef.current = tvLight;
+    }
 
     const terminalCam = cameras.current["cam-terminal"];
     if (terminalCam) terminalCam.position.set(3.82, 1.004, -0.884);

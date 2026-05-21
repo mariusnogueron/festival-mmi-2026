@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 
 const TerminalContext = createContext(null);
 
@@ -8,6 +8,11 @@ export function TerminalProvider({ children }) {
   const [screenRect, setScreenRect] = useState(null);
   const [inspectedObject, setInspectedObject] = useState(null);
   const [isDraggingObject, setIsDraggingObject] = useState(false);
+  const [bookInspected, setBookInspected] = useState(false);
+  const [enveloppeInspected, setEnveloppeInspected] = useState(false);
+  const [isEnding, setIsEnding] = useState(false);
+  const [craneVisible, setCraneVisible] = useState(false);
+  const screenMeshRef = useRef(null);
   return (
     <TerminalContext.Provider
       value={{
@@ -21,6 +26,15 @@ export function TerminalProvider({ children }) {
         setInspectedObject,
         isDraggingObject,
         setIsDraggingObject,
+        bookInspected,
+        setBookInspected,
+        enveloppeInspected,
+        setEnveloppeInspected,
+        isEnding,
+        setIsEnding,
+        craneVisible,
+        setCraneVisible,
+        screenMeshRef,
       }}
     >
       {children}

@@ -2,110 +2,150 @@ import { useEffect, useRef, useState } from "react";
 import { useTerminal } from "../terminal-context.jsx";
 
 const SCENES = {
-    scene_0: {
-      lines: ["Êtes-vous là ?"],
-      choices: ["Oui.", "Qui parle ?", "(silence)"],
-      next: "scene_0b",
-    },
-    scene_0b: {
-      lines: ["Bien.", "Nous avons peu de temps.", "Commençons."],
-      choices: null,
-      next: "scene_1",
-    },
-    scene_1: {
-      lines: ["Vous êtes né à Budapest.", "Vous souvenez-vous de votre frère ?"],
-      choices: ["Je m'en souviens.", "Pourquoi me parlez-vous de ça ?"],
-      next: "scene_1b",
-    },
-    scene_1b: {
-      lines: [
-        "Peu importe.",
-        "Vous étiez curieux. C'est ce qui compte.",
-        "La curiosité ne demande jamais où elle nous mène.",
-      ],
-      choices: null,
-      next: "scene_2",
-    },
-    scene_2: {
-      lines: [
-        "L'uniforme ne vous allait pas.",
-        "Vous êtes tombé malade avant le front.",
-        "Une chance, n'est-ce pas ?",
-        "Vous êtes parti. Berlin, Londres.",
-        "Vous avez traversé la rue, et l'idée vous est venue.",
-      ],
-      choices: ["Continuer."],
-      next: "scene_2b",
-    },
-    scene_2b: {
-      lines: [
-        "La réaction en chaîne.",
-        "Vous l'avez vue avant les autres.",
-        "Vous avez écrit à Einstein. Il a signé.",
-        "Vous saviez ce que vous faisiez ?",
-      ],
-      choices: ["Je voulais les empêcher, eux.", "Je ne savais pas.", "Oui."],
-      next: "scene_3",
-    },
-    scene_3: {
-      lines: [
-        "Chicago. Le réacteur. Décembre 1942.",
-        "Vous avez serré la main de Fermi.",
-        "Vous n'avez pas souri.",
-        "Tu savais déjà.",
-      ],
-      choices: ["J'ai essayé de les arrêter.", "Je n'avais plus la main."],
-      next: "scene_3b",
-    },
-    scene_3b: {
-      lines: [
-        "Tu as fait circuler une pétition.",
-        "Soixante-dix signatures.",
-        "Elle n'est jamais arrivée à Truman.",
-        "Hiroshima.",
-        "Nagasaki.",
-      ],
-      choices: null,
-      freeze: 5000,
-      next: "scene_3c",
-    },
-    scene_3c: {
-      lines: ["Combien ?"],
-      choices: ["Je ne veux pas répondre.", "Trop.", "Je ne sais pas."],
-      next: "scene_3d",
-    },
-    scene_3d: {
-      lines: ["Personne ne sait vraiment.", "C'est peut-être ça, le pire."],
-      choices: null,
-      next: "scene_4",
-    },
-    scene_4: {
-      lines: [
-        "Tu as tout arrêté.",
-        "Tu es passé à la biologie.",
-        "Comme si guérir pouvait équilibrer.",
-        "Trude était là. Elle est restée.",
-      ],
-      choices: null,
-      next: "scene_4b",
-    },
-    scene_4b: { lines: ["Tu m'écris encore ?"], choices: null, next: "scene_5" },
-    scene_5: {
-      lines: [
-        "Une dernière question.",
-        "Si tu pouvais recommencer, ferais-tu autrement ?",
-      ],
-      choices: ["Oui.", "Non.", "Je ne sais pas."],
-      next: "scene_end",
-    },
-  };
+  scene_0: {
+    lines: ["Êtes-vous là ?"],
+    choices: ["Oui.", "Qui parle ?", "(silence)"],
+    next: "scene_0b",
+  },
+  scene_0b: {
+    lines: ["Bien.", "Nous avons peu de temps.", "Commençons."],
+    choices: null,
+    next: "scene_1",
+  },
+  scene_1: {
+    lines: [
+      "Vous êtes né à Budapest.",
+      "Vous souvenez-vous de votre frère ?",
+    ],
+    choices: ["Je m'en souviens.", "Pourquoi me parlez-vous de ça ?"],
+    next: "scene_1b",
+  },
+  scene_1b: {
+    lines: [
+      "Peu importe.",
+      "Vous étiez curieux. C'est ce qui compte.",
+      "La curiosité ne demande jamais où elle nous mène.",
+    ],
+    choices: null,
+    next: "scene_1_object",
+  },
+  scene_1_object: {
+    lines: [],
+    choices: null,
+    next: "scene_2",
+    objectBranch: "book",
+  },
+  scene_2: {
+    lines: [
+      "L'uniforme ne vous allait pas.",
+      "Vous êtes tombé malade avant le front.",
+      "Une chance, n'est-ce pas ?",
+      "Tu… vous êtes parti. Berlin, Londres. Les nazis arrivaient.",
+      "Vous avez traversé la rue, et l'idée vous est venue.",
+    ],
+    choices: ["Continuer."],
+    next: "scene_2b",
+  },
+  scene_2b: {
+    lines: [
+      "La réaction en chaîne.",
+      "Vous l'avez vue avant les autres.",
+      "Vous avez écrit à Einstein. Il a signé.",
+      "Vous saviez ce que vous faisiez ?",
+    ],
+    choices: [
+      "Je voulais les empêcher, eux.",
+      "Je ne savais pas.",
+      "Oui.",
+    ],
+    next: "scene_2c",
+  },
+  scene_2c: {
+    lines: ["Évidemment."],
+    choices: null,
+    next: "scene_2_object",
+  },
+  scene_2_object: {
+    lines: [],
+    choices: null,
+    next: "scene_3",
+    objectBranch: "enveloppe",
+  },
+  scene_3: {
+    lines: [
+      "Chicago. Le réacteur. Décembre 1942.",
+      "Vous avez serré la main de Fermi.",
+      "Vous n'avez pas souri.",
+      "Tu savais déjà.",
+    ],
+    choices: ["J'ai essayé de les arrêter.", "Je n'avais plus la main."],
+    next: "scene_3b",
+  },
+  scene_3b: {
+    lines: [
+      "Tu as fait circuler une pétition.",
+      "Soixante-dix signatures.",
+      "Elle n'est jamais arrivée à Truman.",
+      "Hiroshima.",
+      "Nagasaki.",
+    ],
+    choices: null,
+    freeze: 5000,
+    next: "scene_3c",
+  },
+  scene_3c: {
+    lines: ["Combien ?"],
+    choices: [
+      "Je ne veux pas répondre.",
+      "Trop.",
+      "Je ne sais pas.",
+    ],
+    next: "scene_3d",
+  },
+  scene_3d: {
+    lines: ["Personne ne sait vraiment.", "C'est peut-être ça, le pire."],
+    choices: null,
+    next: "scene_4",
+  },
+  scene_4: {
+    lines: [
+      "Tu as tout arrêté.",
+      "Tu es passé à la biologie.",
+      "Comme si guérir pouvait équilibrer.",
+      "Trude était là. Elle est restée.",
+    ],
+    choices: null,
+    next: "scene_4b",
+  },
+  scene_4b: {
+    lines: ["Tu m'écris encore ?"],
+    choices: null,
+    next: "scene_5",
+    special: "minitel",
+  },
+  scene_5: {
+    lines: [
+      "Une dernière question.",
+      "Si tu pouvais recommencer, ferais-tu autrement ?",
+    ],
+    choices: ["Oui.", "Non.", "Je ne sais pas."],
+    next: "scene_end",
+  },
+};
 
 const TYPEWRITER_SPEED = 30;
 
 export default function TerminalOverlay({ screenPos, screenSize }) {
-  const { isTerminalActive, terminalEverUsed, setTerminalEverUsed } =
-    useTerminal();
+  const {
+    isTerminalActive,
+    terminalEverUsed,
+    setTerminalEverUsed,
+    bookInspected,
+    enveloppeInspected,
+    setIsEnding,
+  } = useTerminal();
   const [renderState, setRenderState] = useState(null);
+  const [overlayFading, setOverlayFading] = useState(false);
   const stateRef = useRef({
     sceneId: "scene_0",
     lineIndex: 0,
@@ -121,6 +161,14 @@ export default function TerminalOverlay({ screenPos, screenSize }) {
   const rafRef = useRef(null);
   const lastTypewriterRef = useRef(0);
   const scrollRef = useRef(null);
+  const bookInspectedRef = useRef(bookInspected);
+  useEffect(() => {
+    bookInspectedRef.current = bookInspected;
+  }, [bookInspected]);
+  const enveloppeInspectedRef = useRef(enveloppeInspected);
+  useEffect(() => {
+    enveloppeInspectedRef.current = enveloppeInspected;
+  }, [enveloppeInspected]);
 
   useEffect(() => {
     if (!isTerminalActive) {
@@ -131,8 +179,27 @@ export default function TerminalOverlay({ screenPos, screenSize }) {
 
     const tick = (now) => {
       const s = stateRef.current;
-      const scene = SCENES[s.sceneId];
+      let scene = SCENES[s.sceneId];
       if (!scene) return;
+
+      if (scene.objectBranch === "book") {
+        scene = {
+          ...scene,
+          lines: bookInspectedRef.current
+            ? ["C'est la première fois que tu y as été confronté."]
+            : [
+                "Vous aviez lu un roman.",
+                "Vous vous demandiez si de telles choses étaient possibles.",
+              ],
+        };
+      } else if (scene.objectBranch === "enveloppe") {
+        scene = {
+          ...scene,
+          lines: enveloppeInspectedRef.current
+            ? ["(Le grattement d'une plume résonne.)"]
+            : ["La lettre est partie.", "Elle est arrivée."],
+        };
+      }
 
       const currentLine = scene.lines[s.lineIndex] ?? "";
       const isLastLine = s.lineIndex === scene.lines.length - 1;
@@ -235,7 +302,12 @@ export default function TerminalOverlay({ screenPos, screenSize }) {
     s.showChoices = false;
     s.charIndex = 0;
     s.selectedChoice = 0;
-    if (scene.next && scene.next !== "scene_end") {
+    if (scene.next === "scene_end") {
+      setIsEnding(true);
+      setOverlayFading(true);
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    } else if (scene.next) {
       s.sceneId = scene.next;
       s.lineIndex = 0;
     }
@@ -269,6 +341,8 @@ export default function TerminalOverlay({ screenPos, screenSize }) {
         borderRadius: "2px",
         display: "flex",
         flexDirection: "column",
+        opacity: overlayFading ? 0 : 1,
+        transition: "opacity 2s ease",
       }}
     >
       <div

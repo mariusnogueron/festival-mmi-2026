@@ -42,9 +42,9 @@ export function stopAllSounds() {
 
 /**
  * @param {string} src
- * @param {{ vary?: boolean }} [options]
+ * @param {{ vary?: boolean, volume?: number }} [options]
  */
-export function playSound(src, { vary = true } = {}) {
+export function playSound(src, { vary = true, volume = 0.5 } = {}) {
   if (!soundEnabled) return;
 
   let pool = audioPools.get(src);
@@ -64,6 +64,7 @@ export function playSound(src, { vary = true } = {}) {
   pool.index = (pool.index + 1) % pool.audios.length;
   audio.currentTime = 0;
   audio.playbackRate = vary ? 0.92 + Math.random() * 0.16 : 1;
+  audio.volume = volume;
   audio.play().catch(() => {});
 }
 

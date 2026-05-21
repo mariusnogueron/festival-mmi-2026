@@ -18,6 +18,7 @@ import TerminalOverlay from "./components/TerminalOverlay.jsx";
 import InspectHint from "./components/InspectHint.jsx";
 import { useHub } from "./hub-context.jsx";
 import WelcomeHub from "./WelcomeHub.jsx";
+import EndingScene from "./components/EndingScene.jsx";
 
 function TerminalUI() {
   const { screenRect } = useTerminal();
@@ -36,6 +37,7 @@ function TerminalUI() {
 
 function App() {
   const { started, exiting } = useHub();
+  const { screenMeshRef } = useTerminal();
   const { aoIntensity, aoRadius, bloomIntensity } = useControls(
     "Post-processing",
     {
@@ -67,6 +69,10 @@ function App() {
       >
         <Suspense fallback={null}>
           <Scene />
+        </Suspense>
+
+        <Suspense fallback={null}>
+          <EndingScene minitelScreenRef={screenMeshRef} />
         </Suspense>
 
         <EffectComposer multisampling={0}>
