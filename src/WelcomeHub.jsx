@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { setHubAmbientActive } from "./audio.js";
 import { useHub } from "./hub-context.jsx";
 import "./welcome-hub.css";
 
@@ -8,11 +9,7 @@ const CREDITS = [
   { role: "Musique & son", name: "Gabriel Maillard" },
 ];
 
-const BOOT_LINES = [
-  "SYNCHRONISATION DU SIGNAL…",
-  "SOURCE : CHAMBRE 7 — VERROUILLÉE",
-  "QUELQU'UN ATTEND DE L'AUTRE CÔTÉ.",
-];
+const BOOT_LINES = ["SYNCHRONISATION DU SIGNAL…"];
 
 /** @param {string} text @param {number} msPerChar */
 function useTypewriter(text, msPerChar, active) {
@@ -45,7 +42,7 @@ function CreditsTeletext({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[31000] flex items-center justify-center bg-black/80 p-4 backdrop-blur-[3px]"
+      className="fixed inset-0 z-31000 flex items-center justify-center bg-black/80 p-4 backdrop-blur-[3px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="credits-title"
@@ -83,14 +80,8 @@ function TvScreenContent({
   onStart,
   onCredits,
 }) {
-  const bootIndex =
-    phase === "boot" ? 0 : phase === "boot2" ? 1 : phase === "boot3" ? 2 : 0;
-  const bootLine = BOOT_LINES[bootIndex] ?? "";
-  const typed = useTypewriter(
-    bootLine,
-    28,
-    phase === "boot" || phase === "boot2" || phase === "boot3",
-  );
+  const bootLine = phase === "boot" ? (BOOT_LINES[0] ?? "") : "";
+  const typed = useTypewriter(bootLine, 28, phase === "boot");
   const menuReady = phase === "menu";
 
   return (
@@ -211,7 +202,7 @@ function TvShell(props) {
 export default function WelcomeHub() {
   const { started, exiting, soundEnabled, setSoundEnabled, beginExit, start } = useHub();
   const [creditsOpen, setCreditsOpen] = useState(false);
-  const [phase, setPhase] = useState(/** @type {'static'|'boot'|'boot2'|'boot3'|'menu'} */ ("static"));
+  const [phase, setPhase] = useState(/** @type {'static'|'boot'|'menu'} */ ("static"));
   const [soundWarn, setSoundWarn] = useState(false);
   const [soundSkipped, setSoundSkipped] = useState(false);
   const [powerFlash, setPowerFlash] = useState(false);
@@ -223,14 +214,18 @@ export default function WelcomeHub() {
       timersRef.current.push(id);
     };
     t(() => setPhase("boot"), 700);
-    t(() => setPhase("boot2"), 2400);
-    t(() => setPhase("boot3"), 4200);
-    t(() => setPhase("menu"), 5800);
+    t(() => setPhase("menu"), 2800);
     return () => {
       timersRef.current.forEach(window.clearTimeout);
       timersRef.current = [];
     };
   }, []);
+
+  useEffect(() => {
+    const hubVisible = !started && !exiting;
+    setHubAmbientActive(soundEnabled && hubVisible);
+    return () => setHubAmbientActive(false);
+  }, [soundEnabled, started, exiting]);
 
   const handleStart = useCallback(() => {
     if (phase !== "menu") return;
@@ -266,7 +261,7 @@ export default function WelcomeHub() {
   return (
     <>
       <div
-        className={`hub-root fixed inset-0 z-[30000] flex flex-col bg-[#080604] ${exiting ? "hub-root--exiting pointer-events-none" : ""}`}
+        className={`hub-root fixed inset-0 z-30000 flex flex-col bg-[#080604] ${exiting ? "hub-root--exiting pointer-events-none" : ""}`}
         aria-hidden={exiting}
       >
         <div className="relative min-h-0 flex-1">
@@ -274,7 +269,11 @@ export default function WelcomeHub() {
             phase={phase}
             soundEnabled={soundEnabled}
             soundWarn={soundWarn}
-            onToggleSound={() => setSoundEnabled((v) => !v)}
+            onToggleSound={() => {
+              const next = !soundEnabled;
+              setSoundEnabled(next);
+              if (next) setHubAmbientActive(true);
+            }}
             onStart={handleStart}
             onCredits={() => setCreditsOpen(true)}
           />
