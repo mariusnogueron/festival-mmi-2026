@@ -13,17 +13,17 @@ import {
 import { ToneMappingMode } from "postprocessing";
 import { PCFShadowMap } from "three";
 import { HoverTooltipOverlay, SceneMessageOverlay } from "./hover-ui-context.jsx";
-import { TerminalProvider, useTerminal } from "./terminal-context.jsx";
+import { useTerminal } from "./terminal-context.jsx";
 import TerminalOverlay from "./components/TerminalOverlay.jsx";
+import InspectHint from "./components/InspectHint.jsx";
 import { useHub } from "./hub-context.jsx";
 import WelcomeHub from "./WelcomeHub.jsx";
 
 function TerminalUI() {
-  const { isTerminalActive, screenRect } = useTerminal();
+  const { screenRect } = useTerminal();
 
   return (
     <TerminalOverlay
-      isTerminalActive={isTerminalActive}
       screenPos={screenRect ? { x: screenRect.x, y: screenRect.y } : null}
       screenSize={
         screenRect
@@ -58,7 +58,7 @@ function App() {
   );
 
   return (
-    <TerminalProvider>
+    <>
       <Canvas
         flat
         dpr={[1, 1.5]}
@@ -91,11 +91,12 @@ function App() {
       {started && !exiting && (
         <>
           <TerminalUI />
+          <InspectHint />
           <HoverTooltipOverlay />
           <SceneMessageOverlay />
         </>
       )}
-    </TerminalProvider>
+    </>
   );
 }
 
