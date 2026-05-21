@@ -1,21 +1,22 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useState } from "react";
 
 const TerminalContext = createContext(null);
 
 export function TerminalProvider({ children }) {
-  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
-  const value = useMemo(
-    () => ({ isTerminalOpen, setIsTerminalOpen }),
-    [isTerminalOpen],
-  );
+  const [isTerminalActive, setIsTerminalActive] = useState(false);
+  const [screenRect, setScreenRect] = useState(null);
   return (
-    <TerminalContext.Provider value={value}>{children}</TerminalContext.Provider>
+    <TerminalContext.Provider
+      value={{
+        isTerminalActive,
+        setIsTerminalActive,
+        screenRect,
+        setScreenRect,
+      }}
+    >
+      {children}
+    </TerminalContext.Provider>
   );
 }
 
-export function useTerminal() {
-  const ctx = useContext(TerminalContext);
-  if (!ctx)
-    throw new Error("useTerminal doit être utilisé dans TerminalProvider");
-  return ctx;
-}
+export const useTerminal = () => useContext(TerminalContext);

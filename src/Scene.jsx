@@ -1,10 +1,8 @@
-import { useRef, useEffect, useLayoutEffect, useState } from "react";
-import { useGLTF, useCursor, Html } from "@react-three/drei";
+import { useRef, useEffect, useLayoutEffect } from "react";
+import { useGLTF, useCursor } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useControls } from "leva";
 import {
-  Box3,
-  Euler,
   MathUtils,
   PerspectiveCamera,
   Quaternion,
@@ -19,12 +17,16 @@ import {
   isBookHit,
   isEnvelopeHit,
   isLampCordHit,
+  isKeyboardHit,
+  getHitKeyName,
+  KEY_LETTER_OBJECT_NAME,
+  KEY_SUPPORT_OBJECT_NAME,
   BOOK_OBJECT_NAME,
   ENVELOPE_OBJECT_NAME,
 } from "./interactive-objects.js";
 import { useHoverUi } from "./hover-ui-context.jsx";
+import TerminalTexture from "./TerminalTexture.jsx";
 import { useTerminal } from "./terminal-context.jsx";
-import Terminal from "./Terminal.jsx";
 
 RectAreaLightUniformsLib.init();
 
@@ -32,6 +34,53 @@ const CAMERA_BLEND_MS = 2200;
 
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+const KEY_SOUND_SRC = "/sfx/clavier_1.mp3";
+const LIGHTBULB_SOUND_SRC = "/sfx/ampoule_2.mp3";
+const MINITEL_START_SOUND_SRC = "/sfx/allumage_pc_ancien_1.mp3";
+const MINITEL_ON_SOUND_SRC = "/sfx/vieux_pc_qui_tourne_3.mp3";
+const KEY_PRESS_DURATION_MS = 110;
+
+const KEY_MAP = {
+  Enter: "envoi",
+  Backspace: "correction",
+  Escape: "annulation",
+  ArrowUp: "retour",
+  ArrowDown: "suite",
+  " ": "espace",
+  "0": "0",
+  "1": "1",
+  "2": "2",
+  "3": "3",
+  "4": "4",
+  "5": "5",
+  "6": "6",
+  "7": "7",
+  "8": "8",
+  "9": "9",
+};
+
+const audioPools = new Map();
+
+function playSound(src, { vary = true } = {}) {
+  let pool = audioPools.get(src);
+  if (!pool) {
+    pool = {
+      audios: Array.from({ length: 8 }, () => {
+        const audio = new Audio(src);
+        audio.preload = "auto";
+        return audio;
+      }),
+      index: 0,
+    };
+    audioPools.set(src, pool);
+  }
+  const audio = pool.audios[pool.index];
+  pool.index = (pool.index + 1) % pool.audios.length;
+  audio.currentTime = 0;
+  audio.playbackRate = vary ? 0.92 + Math.random() * 0.16 : 1;
+  audio.play().catch(() => {});
 }
 
 function setNodeEmissive(node, on) {
@@ -51,6 +100,7 @@ export default function Model(props) {
   const { scene: gltfScene } = useGLTF("/chambre.glb");
   const { set, size, gl, camera } = useThree();
   const { hoverHint, setHoverHint } = useHoverUi();
+  const screenMeshRef = useRef(null);
   useCursor(!!hoverHint);
 
   const cameras = useRef({});
@@ -69,16 +119,22 @@ export default function Model(props) {
     near1: 0.05,
     far0: 5000,
     far1: 5000,
-    /** @type {import('three').PerspectiveCamera | null} */
     target: null,
+    targetName: null,
   });
   const tmpPos = useRef(new Vector3()).current;
   const tmpQuat = useRef(new Quaternion()).current;
 
   const floatingNodesRef = useRef(new Set());
   const floatingObjectsMapRef = useRef(new Map());
+  const keyboardKeysRef = useRef(new Map());
+  const activeKeysRef = useRef(new Map());
   const lampOnRef = useRef(true);
   const pointIntensityRef = useRef(25);
+  const isTerminalActiveRef = useRef(false);
+  const screenRectRef = useRef(null);
+  const { isTerminalActive, setIsTerminalActive, setScreenRect } =
+    useTerminal();
 
   const { normalScale } = useControls("Matériaux", {
     normalScale: {
@@ -87,6 +143,16 @@ export default function Model(props) {
       min: 0,
       max: 2,
       step: 0.05,
+    },
+  });
+
+  const { keyPressDepth } = useControls("Clavier", {
+    keyPressDepth: {
+      label: "Profondeur enfoncement",
+      value: 0.012,
+      min: 0,
+      max: 0.1,
+      step: 0.001,
     },
   });
 
@@ -117,11 +183,7 @@ export default function Model(props) {
   }));
 
   const activeCameraRef = useRef(activeCamera);
-  /** Caméra Leva juste avant passage en cam-terminal (clic minitel ou panneau). */
   const cameraBeforeTerminalRef = useRef("cam-main");
-  const { isTerminalOpen, setIsTerminalOpen } = useTerminal();
-  const minitelScreenRef = useRef(null);
-  const [terminalAnchor, setTerminalAnchor] = useState(null);
 
   const [camPos, setCamPos] = useControls("Position caméra", () => ({
     x: { value: -0.989, min: -20, max: 20, step: 0.001 },
@@ -138,28 +200,17 @@ export default function Model(props) {
     height: { value: 2, min: 0.1, max: 10, step: 0.1 },
   });
 
-  const terminalUi = useControls("Terminal écran", {
-    distanceFactor: { label: "Échelle", value: 8, min: 0.2, max: 40, step: 0.1 },
-    offsetX: { label: "Décalage X", value: 0, min: -0.5, max: 0.5, step: 0.001 },
-    offsetY: { label: "Décalage Y", value: 0, min: -0.5, max: 0.5, step: 0.001 },
-    offsetZ: { label: "Décalage Z", value: 0, min: -0.5, max: 0.5, step: 0.001 },
-  });
-
   useEffect(() => {
     const prev = activeCameraRef.current;
     if (activeCamera === "cam-terminal" && prev !== "cam-terminal") {
       cameraBeforeTerminalRef.current = prev;
     }
-    activeCameraRef.current = activeCamera;
-    if (activeCamera !== "cam-terminal") setIsTerminalOpen(false);
-  }, [activeCamera]);
-
-  // Quand le terminal se ferme depuis son propre [ESC], on revient à la caméra précédente
-  useEffect(() => {
-    if (!isTerminalOpen && activeCameraRef.current === "cam-terminal") {
-      setPointLightControls({ activeCamera: cameraBeforeTerminalRef.current });
+    if (activeCamera !== "cam-terminal") {
+      isTerminalActiveRef.current = false;
+      setIsTerminalActive(false);
     }
-  }, [isTerminalOpen, setPointLightControls]);
+    activeCameraRef.current = activeCamera;
+  }, [activeCamera]);
 
   const lastAspectRef = useRef({ w: 0, h: 0 });
 
@@ -186,6 +237,29 @@ export default function Model(props) {
       });
     }
 
+    if (activeKeysRef.current.size > 0) {
+      const now = performance.now();
+      activeKeysRef.current.forEach((anim, keyName) => {
+        const entry = keyboardKeysRef.current.get(keyName);
+        if (!entry) {
+          activeKeysRef.current.delete(keyName);
+          return;
+        }
+        const progress = (now - anim.t0) / KEY_PRESS_DURATION_MS;
+        if (progress >= 1) {
+          entry.nodes.forEach((node) => {
+            node.position.y = node.userData.keyBaseY;
+          });
+          activeKeysRef.current.delete(keyName);
+          return;
+        }
+        const offset = Math.sin(progress * Math.PI) * keyPressDepth;
+        entry.nodes.forEach((node) => {
+          node.position.y = node.userData.keyBaseY - offset;
+        });
+      });
+    }
+
     if (!b.active || !b.target) return;
 
     const blendCam = blendCamRef.current;
@@ -208,7 +282,9 @@ export default function Model(props) {
     if (t >= 1) {
       b.active = false;
       const target = b.target;
+      const targetName = b.targetName;
       b.target = null;
+      b.targetName = null;
       target.aspect = sz.width / sz.height;
       target.updateProjectionMatrix();
       state.set({ camera: target });
@@ -217,7 +293,11 @@ export default function Model(props) {
         y: target.position.y,
         z: target.position.z,
       });
-      if (target.name === "cam-terminal") setIsTerminalOpen(true);
+
+      if (targetName === "cam-terminal") {
+        isTerminalActiveRef.current = true;
+        setIsTerminalActive(true);
+      }
     }
   });
 
@@ -225,7 +305,6 @@ export default function Model(props) {
     const target = cameras.current[activeCamera];
     if (!target?.isPerspectiveCamera) return;
 
-    const blendCam = blendCamRef.current;
     const current = camera;
     const sz = size;
     if (current === target) return;
@@ -245,9 +324,11 @@ export default function Model(props) {
     b.far0 = current.far;
     b.far1 = target.far;
     b.target = target;
+    b.targetName = activeCamera;
     b.t0 = performance.now();
     b.active = true;
 
+    const blendCam = blendCamRef.current;
     blendCam.position.copy(b.p0);
     blendCam.quaternion.copy(b.q0);
     blendCam.fov = b.f0;
@@ -256,7 +337,7 @@ export default function Model(props) {
     blendCam.aspect = sz.width / sz.height;
     blendCam.updateProjectionMatrix();
     set({ camera: blendCam });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- uniquement au changement Leva ; `camera` exclu pour éviter de relancer le blend quand on assigne blendCam
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCamera]);
 
   useEffect(() => {
@@ -279,7 +360,8 @@ export default function Model(props) {
       const hit = raycast(event);
       if (
         hit &&
-        (isMinitelHit(hit) ||
+        (isKeyboardHit(hit) ||
+          isMinitelHit(hit) ||
           isMinitelScreenHit(hit) ||
           isBookHit(hit) ||
           isEnvelopeHit(hit) ||
@@ -294,13 +376,29 @@ export default function Model(props) {
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
       const hit = raycast(event);
+      if (!hit) return;
 
-      if (hit && (isMinitelHit(hit) || isMinitelScreenHit(hit))) {
+      if (isKeyboardHit(hit)) {
+        const keyName = getHitKeyName(hit);
+        const entry = keyName && keyboardKeysRef.current.get(keyName);
+        if (entry) {
+          activeKeysRef.current.set(keyName, { t0: performance.now() });
+          playSound(KEY_SOUND_SRC);
+        }
+        return;
+      }
+
+      if (isMinitelScreenHit(hit)) {
         setPointLightControls({ activeCamera: "cam-terminal" });
         return;
       }
 
-      if (hit && (isBookHit(hit) || isEnvelopeHit(hit))) {
+      if (isMinitelHit(hit)) {
+        setPointLightControls({ activeCamera: "cam-terminal" });
+        return;
+      }
+
+      if (isBookHit(hit) || isEnvelopeHit(hit)) {
         const name = isBookHit(hit) ? BOOK_OBJECT_NAME : ENVELOPE_OBJECT_NAME;
         const node = floatingObjectsMapRef.current.get(name);
         if (node) {
@@ -316,8 +414,9 @@ export default function Model(props) {
         return;
       }
 
-      if (hit && isLampCordHit(hit)) {
+      if (isLampCordHit(hit)) {
         lampOnRef.current = !lampOnRef.current;
+        playSound(LIGHTBULB_SOUND_SRC, { vary: false });
         if (pointLightRef.current)
           pointLightRef.current.intensity = lampOnRef.current
             ? pointIntensityRef.current
@@ -326,18 +425,40 @@ export default function Model(props) {
       }
 
       if (activeCameraRef.current === "cam-terminal") {
+        isTerminalActiveRef.current = false;
+        setIsTerminalActive(false);
         setPointLightControls({
           activeCamera: cameraBeforeTerminalRef.current,
         });
       }
     };
 
+    const triggerKeyAnimation = (keyName) => {
+      const entry = keyboardKeysRef.current.get(keyName);
+      if (entry) {
+        activeKeysRef.current.set(keyName, { t0: performance.now() });
+        playSound(KEY_SOUND_SRC);
+      }
+    };
+
     const onKeyDown = (event) => {
-      if (event.key !== "Escape") return;
-      if (activeCameraRef.current !== "cam-terminal") return;
-      setPointLightControls({
-        activeCamera: cameraBeforeTerminalRef.current,
-      });
+      if (
+        event.key === "Escape" &&
+        activeCameraRef.current === "cam-terminal"
+      ) {
+        isTerminalActiveRef.current = false;
+        setIsTerminalActive(false);
+        setPointLightControls({
+          activeCamera: cameraBeforeTerminalRef.current,
+        });
+      }
+
+      if (isTerminalActiveRef.current) {
+        const keyName =
+          KEY_MAP[event.key] ??
+          (event.key.length === 1 ? event.key.toLowerCase() : null);
+        if (keyName) triggerKeyAnimation(keyName);
+      }
     };
 
     el.addEventListener("pointermove", onPointerMove);
@@ -354,6 +475,9 @@ export default function Model(props) {
   }, [gltfScene, camera, gl, setHoverHint, setPointLightControls]);
 
   useEffect(() => {
+    keyboardKeysRef.current.clear();
+    activeKeysRef.current.clear();
+
     gltfScene.traverse((obj) => {
       if (obj.isCamera) cameras.current[obj.name] = obj;
       if (obj.isMesh) {
@@ -379,6 +503,9 @@ export default function Model(props) {
           });
         });
       }
+      if (obj.name === "minitel-screen") {
+        screenMeshRef.current = obj;
+      }
       if (obj.isPointLight) {
         pointLightRef.current = obj;
         obj.castShadow = true;
@@ -390,28 +517,26 @@ export default function Model(props) {
         floatingObjectsMapRef.current.set(obj.name, obj);
         obj.userData.baseY = obj.position.y;
       }
-      if (obj.isMesh && obj.name === "minitel-screen") {
-        minitelScreenRef.current = obj;
+
+      const isKeyLetter = obj.name.startsWith(`${KEY_LETTER_OBJECT_NAME}-`);
+      const isKeySupport = obj.name.startsWith(`${KEY_SUPPORT_OBJECT_NAME}-`);
+      if (isKeyLetter || isKeySupport) {
+        const prefix = isKeySupport
+          ? KEY_SUPPORT_OBJECT_NAME
+          : KEY_LETTER_OBJECT_NAME;
+        const keyName = obj.name.slice(prefix.length + 1);
+        let entry = keyboardKeysRef.current.get(keyName);
+        if (!entry) {
+          entry = { nodes: [] };
+          keyboardKeysRef.current.set(keyName, entry);
+        }
+        obj.userData.keyBaseY = obj.position.y;
+        entry.nodes.push(obj);
       }
     });
+
     const terminalCam = cameras.current["cam-terminal"];
     if (terminalCam) terminalCam.position.set(3.82, 1.004, -0.884);
-
-    const screenMesh = minitelScreenRef.current;
-    if (screenMesh && terminalCam) {
-      screenMesh.updateWorldMatrix(true, false);
-      terminalCam.updateWorldMatrix(true, true);
-      const center = new Box3()
-        .setFromObject(screenMesh)
-        .getCenter(new Vector3());
-      const euler = new Euler().setFromQuaternion(
-        terminalCam.getWorldQuaternion(new Quaternion()),
-      );
-      setTerminalAnchor({
-        position: [center.x, center.y, center.z],
-        rotation: [euler.x, euler.y, euler.z],
-      });
-    }
 
     const defaultCam = cameras.current["cam-main"];
     if (defaultCam) {
@@ -424,7 +549,58 @@ export default function Model(props) {
         z: defaultCam.position.z,
       });
     }
-  }, [gltfScene]); // eslint-disable-line react-hooks/exhaustive-deps -- exécution au chargement du GLB uniquement
+  }, [gltfScene]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const computeScreenRect = () => {
+      const mesh = screenMeshRef.current;
+      const terminalCam = cameras.current["cam-terminal"];
+      if (!mesh?.geometry || !terminalCam) return;
+
+      terminalCam.aspect = window.innerWidth / window.innerHeight;
+      terminalCam.updateProjectionMatrix();
+      terminalCam.updateWorldMatrix(true, false);
+
+      mesh.geometry.computeBoundingBox();
+      const bb = mesh.geometry.boundingBox;
+      mesh.updateWorldMatrix(true, false);
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      const corner = new Vector3();
+
+      for (let i = 0; i < 8; i++) {
+        corner.set(
+          i & 1 ? bb.max.x : bb.min.x,
+          i & 2 ? bb.max.y : bb.min.y,
+          i & 4 ? bb.max.z : bb.min.z
+        );
+        corner.applyMatrix4(mesh.matrixWorld);
+        corner.project(terminalCam);
+        const xPx = (corner.x * 0.5 + 0.5) * window.innerWidth;
+        const yPx = (-corner.y * 0.5 + 0.5) * window.innerHeight;
+        if (xPx < minX) minX = xPx;
+        if (xPx > maxX) maxX = xPx;
+        if (yPx < minY) minY = yPx;
+        if (yPx > maxY) maxY = yPx;
+      }
+
+      const rect = {
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        width: maxX - minX,
+        height: maxY - minY,
+      };
+      screenRectRef.current = rect;
+      setScreenRect(rect);
+    };
+
+    computeScreenRect();
+    window.addEventListener("resize", computeScreenRect);
+    return () => window.removeEventListener("resize", computeScreenRect);
+  }, [gltfScene, setScreenRect]);
 
   useEffect(() => {
     if (cameraBlendRef.current.active) return;
@@ -458,30 +634,22 @@ export default function Model(props) {
   }, [normalScale, gltfScene]);
 
   return (
-    <group {...props} dispose={null}>
-      <primitive object={gltfScene} />
-      {isTerminalOpen && terminalAnchor && (
-        <Html
-          transform
-          distanceFactor={terminalUi.distanceFactor}
-          position={[
-            terminalAnchor.position[0] + terminalUi.offsetX,
-            terminalAnchor.position[1] + terminalUi.offsetY,
-            terminalAnchor.position[2] + terminalUi.offsetZ,
-          ]}
-          rotation={terminalAnchor.rotation}
-        >
-          <Terminal />
-        </Html>
-      )}
-      <rectAreaLight
-        position={[al1.x, al1.y, al1.z]}
-        intensity={al1.intensity}
-        width={al1.width}
-        height={al1.height}
-        rotation={[-Math.PI / 2, 0, 0]}
-      />
-    </group>
+    <>
+      <group {...props} dispose={null}>
+        <primitive object={gltfScene} />
+        <TerminalTexture
+          gltfScene={gltfScene}
+          isTerminalActive={isTerminalActive}
+        />
+        <rectAreaLight
+          position={[al1.x, al1.y, al1.z]}
+          intensity={al1.intensity}
+          width={al1.width}
+          height={al1.height}
+          rotation={[-Math.PI / 2, 0, 0]}
+        />
+      </group>
+    </>
   );
 }
 

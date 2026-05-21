@@ -194,10 +194,17 @@ function drawTerminal(ctx, state) {
   if (showChoices && choices) {
     y += 4;
     choices.forEach((choice, i) => {
-      const choiceText = `[${i + 1}] ${choice}`;
+      const isSelected = i === (state.selectedChoice ?? 0);
+      const choiceText = `${isSelected ? "▶ " : "  "}[${i + 1}] ${choice}`;
       const wrapped = wrapText(ctx, choiceText, 470);
       for (const line of wrapped) {
-        drawGlowText(ctx, line, PADDING, y, COLOR_CHOICE);
+        drawGlowText(
+          ctx,
+          line,
+          PADDING,
+          y,
+          isSelected ? COLOR_TEXT : COLOR_CHOICE
+        );
         y += LINE_HEIGHT;
       }
     });
@@ -234,18 +241,16 @@ export default function TerminalTexture({ gltfScene, isTerminalActive }) {
     canvasRef.current = canvas;
 
     const texture = new CanvasTexture(canvas);
+    texture.flipY = false;
     textureRef.current = texture;
-  }, []);
 
-  useEffect(() => {
-    if (!gltfScene || !textureRef.current) return;
+    if (!gltfScene) return;
 
     gltfScene.traverse((obj) => {
       if (obj.isMesh && obj.name === "minitel-screen") {
         meshRef.current = obj;
-        const m = obj.material;
+        const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
         originalMapRef.current = m.map;
-        originalEmissiveMapRef.current = m.emissiveMap;
         originalEmissiveRef.current = m.emissive.clone();
         originalEmissiveIntensityRef.current = m.emissiveIntensity;
       }
@@ -254,7 +259,9 @@ export default function TerminalTexture({ gltfScene, isTerminalActive }) {
 
   useEffect(() => {
     const mesh = meshRef.current;
-    if (!mesh) return;
+    const texture = textureRef.current;
+    const canvas = canvasRef.current;
+    if (!mesh || !texture || !canvas) return;
 
     if (isTerminalActive) {
       const s = stateRef.current;
@@ -265,20 +272,40 @@ export default function TerminalTexture({ gltfScene, isTerminalActive }) {
       s.showChoices = false;
       s.frozen = false;
       s.freezeUntil = null;
-      s.dirty = true;
+      s.autoAdvanceAt = null;
+      s.nextLineAt = null;
       s.header = "TELEMATIQUE";
+      s.lastTypewriter = -Infinity;
+      s.lastCursor = -Infinity;
+      s.selectedChoice = 0;
+      s.dirty = true;
 
-      const m = mesh.material;
-      m.emissiveMap = textureRef.current;
-      m.emissive.set("#ffffff");
-      m.emissiveIntensity = 1;
+      const ctx = canvas.getContext("2d");
+      drawTerminal(ctx, {
+        history: [],
+        currentLine: "",
+        displayed: "",
+        choices: null,
+        showChoices: false,
+        cursorVisible: true,
+        header: "TELEMATIQUE",
+        selectedChoice: 0,
+      });
+      texture.needsUpdate = true;
+
+      const m = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      m.map = texture;
+      m.emissiveMap = texture;
+      m.emissive.set("#c8ffb0");
+      m.emissiveIntensity = 0.6;
       m.needsUpdate = true;
     } else {
-      const m = mesh.material;
-      m.emissiveMap = originalEmissiveMapRef.current;
-      if (originalEmissiveRef.current) m.emissive.copy(originalEmissiveRef.current);
-      m.emissiveIntensity = originalEmissiveIntensityRef.current ?? 1;
+      const m = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
       m.map = originalMapRef.current;
+      m.emissiveMap = null;
+      if (originalEmissiveRef.current)
+        m.emissive.copy(originalEmissiveRef.current);
+      m.emissiveIntensity = originalEmissiveIntensityRef.current ?? 0;
       m.needsUpdate = true;
     }
   }, [isTerminalActive]);
@@ -288,26 +315,58 @@ export default function TerminalTexture({ gltfScene, isTerminalActive }) {
 
     const onKeyDown = (e) => {
       const s = stateRef.current;
-      if (!s.showChoices) return;
       const scene = SCENES[s.sceneId];
-      if (!scene?.choices) return;
-      const idx = parseInt(e.key) - 1;
-      if (idx < 0 || idx >= scene.choices.length) return;
 
-      s.history.push({
-        type: "prompt",
-        text: scene.lines[scene.lines.length - 1],
-      });
-      s.history.push({ type: "response", text: scene.choices[idx] });
-      s.showChoices = false;
-      s.charIndex = 0;
-
-      if (scene.next && scene.next !== "scene_end") {
-        s.sceneId = scene.next;
-        s.lineIndex = 0;
-        if (SCENES[s.sceneId]?.special === "minitel") s.header = "3615 TRUDE";
+      if (s.showChoices && scene?.choices) {
+        if (e.key === "ArrowUp") {
+          s.selectedChoice =
+            (s.selectedChoice - 1 + scene.choices.length) %
+            scene.choices.length;
+          s.dirty = true;
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          s.selectedChoice = (s.selectedChoice + 1) % scene.choices.length;
+          s.dirty = true;
+          return;
+        }
+        if (e.key === "Enter") {
+          const idx = s.selectedChoice;
+          s.history.push({
+            type: "prompt",
+            text: scene.lines[scene.lines.length - 1],
+          });
+          s.history.push({ type: "response", text: scene.choices[idx] });
+          s.showChoices = false;
+          s.charIndex = 0;
+          s.selectedChoice = 0;
+          if (scene.next && scene.next !== "scene_end") {
+            s.sceneId = scene.next;
+            s.lineIndex = 0;
+            if (SCENES[s.sceneId]?.special === "minitel")
+              s.header = "3615 TRUDE";
+          }
+          s.dirty = true;
+        }
+        const idx = parseInt(e.key) - 1;
+        if (idx >= 0 && idx < scene.choices.length) {
+          s.history.push({
+            type: "prompt",
+            text: scene.lines[scene.lines.length - 1],
+          });
+          s.history.push({ type: "response", text: scene.choices[idx] });
+          s.showChoices = false;
+          s.charIndex = 0;
+          s.selectedChoice = 0;
+          if (scene.next && scene.next !== "scene_end") {
+            s.sceneId = scene.next;
+            s.lineIndex = 0;
+            if (SCENES[s.sceneId]?.special === "minitel")
+              s.header = "3615 TRUDE";
+          }
+          s.dirty = true;
+        }
       }
-      s.dirty = true;
     };
 
     window.addEventListener("keydown", onKeyDown);

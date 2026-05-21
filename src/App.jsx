@@ -13,6 +13,24 @@ import {
 import { ToneMappingMode } from "postprocessing";
 import { PCFShadowMap } from "three";
 import { HoverTooltipOverlay } from "./hover-ui-context.jsx";
+import { TerminalProvider, useTerminal } from "./terminal-context.jsx";
+import TerminalOverlay from "./components/TerminalOverlay.jsx";
+
+function TerminalUI() {
+  const { isTerminalActive, screenRect } = useTerminal();
+
+  return (
+    <TerminalOverlay
+      isTerminalActive={isTerminalActive}
+      screenPos={screenRect ? { x: screenRect.x, y: screenRect.y } : null}
+      screenSize={
+        screenRect
+          ? { width: screenRect.width, height: screenRect.height }
+          : null
+      }
+    />
+  );
+}
 
 function App() {
   const { aoIntensity, aoRadius, bloomIntensity } = useControls(
@@ -37,7 +55,7 @@ function App() {
   );
 
   return (
-    <>
+    <TerminalProvider>
       <Canvas
         flat
         dpr={[1, 1.5]}
@@ -66,8 +84,9 @@ function App() {
         </EffectComposer>
         <Perf position="top-left" />
       </Canvas>
+      <TerminalUI />
       <HoverTooltipOverlay />
-    </>
+    </TerminalProvider>
   );
 }
 
