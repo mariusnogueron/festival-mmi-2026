@@ -49,16 +49,16 @@ const KEY_MAP = {
   ArrowUp: "retour",
   ArrowDown: "suite",
   " ": "espace",
-  "0": "0",
-  "1": "1",
-  "2": "2",
-  "3": "3",
-  "4": "4",
-  "5": "5",
-  "6": "6",
-  "7": "7",
-  "8": "8",
-  "9": "9",
+  0: "0",
+  1: "1",
+  2: "2",
+  3: "3",
+  4: "4",
+  5: "5",
+  6: "6",
+  7: "7",
+  8: "8",
+  9: "9",
 };
 
 const audioPools = new Map();
@@ -575,7 +575,7 @@ export default function Model(props) {
         corner.set(
           i & 1 ? bb.max.x : bb.min.x,
           i & 2 ? bb.max.y : bb.min.y,
-          i & 4 ? bb.max.z : bb.min.z
+          i & 4 ? bb.max.z : bb.min.z,
         );
         corner.applyMatrix4(mesh.matrixWorld);
         corner.project(terminalCam);
@@ -654,5 +654,5 @@ export default function Model(props) {
 }
 
 useGLTF.setDecoderPath(
-  "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
+  "https://www.gstatic.com/draco/versioned/decoders/1.5.6/",
 );
