@@ -1,0 +1,218 @@
+@keyframes hub-static-flicker {
+  0%,
+  100% {
+    opacity: 0.92;
+  }
+  50% {
+    opacity: 0.78;
+  }
+}
+
+@keyframes hub-scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes hub-cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hub-power-line {
+  0% {
+    transform: scaleY(0.004);
+    opacity: 0.2;
+  }
+  35% {
+    transform: scaleY(0.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1.4);
+    opacity: 0;
+  }
+}
+
+@keyframes hub-phosphor-pulse {
+  0%,
+  100% {
+    text-shadow: 0 0 6px rgba(180, 150, 90, 0.35);
+  }
+  50% {
+    text-shadow: 0 0 16px rgba(200, 170, 100, 0.55);
+  }
+}
+
+@keyframes hub-ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes hub-tube-flicker {
+  0%,
+  100% {
+    opacity: 0.04;
+  }
+  50% {
+    opacity: 0.07;
+  }
+}
+
+.hub-root {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.hub-root--exiting .hub-tv-shell {
+  animation: hub-tv-power-off 0.9s ease-in forwards;
+}
+
+@keyframes hub-tv-power-off {
+  0% {
+    filter: brightness(1);
+  }
+  40% {
+    filter: brightness(2.8);
+  }
+  100% {
+    filter: brightness(0);
+    opacity: 0;
+  }
+}
+
+.hub-power-flash {
+  animation: hub-power-line 0.85s ease-out forwards;
+}
+
+.hub-teletext {
+  font-family: "VT323", "IBM Plex Mono", monospace;
+  letter-spacing: 0.06em;
+}
+
+.hub-cursor::after {
+  content: "█";
+  margin-left: 2px;
+  animation: hub-cursor-blink 1s step-end infinite;
+}
+
+.hub-static-noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  animation: hub-static-flicker 0.12s steps(2) infinite;
+}
+
+.hub-scan-beam {
+  animation: hub-scan 7s linear infinite;
+}
+
+.hub-title-glow {
+  animation: hub-phosphor-pulse 3.5s ease-in-out infinite;
+}
+
+.hub-ticker-track {
+  animation: hub-ticker 28s linear infinite;
+}
+
+/* ——— Téléviseur vintage plein écran ——— */
+.hub-tv-shell {
+  --bezel-wood: clamp(18px, 3.2vw, 44px);
+  --bezel-rim: clamp(10px, 1.6vw, 22px);
+}
+
+.hub-tv-cabinet {
+  background:
+    linear-gradient(180deg, rgba(255, 220, 160, 0.04) 0%, transparent 18%),
+    linear-gradient(135deg, #4a3728 0%, #2f2218 28%, #1a120c 62%, #120c08 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 160, 0.12),
+    inset 0 -20px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px #0a0705;
+}
+
+.hub-tv-cabinet::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 3px,
+    rgba(0, 0, 0, 0.12) 3px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+}
+
+.hub-tv-rim {
+  background: linear-gradient(165deg, #5c4f3e 0%, #2a2218 45%, #15100c 100%);
+  box-shadow:
+    inset 0 2px 4px rgba(255, 220, 160, 0.08),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+.hub-tv-tube {
+  border-radius: clamp(14px, 2.5vw, 36px) clamp(14px, 2.5vw, 36px)
+    clamp(22px, 4vw, 52px) clamp(22px, 4vw, 52px);
+  box-shadow:
+    inset 0 0 80px rgba(0, 0, 0, 0.85),
+    inset 0 0 24px rgba(255, 180, 80, 0.06),
+    inset 0 0 4px rgba(255, 255, 255, 0.04);
+}
+
+.hub-tv-tube::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.55);
+}
+
+.hub-tv-knob {
+  background: radial-gradient(circle at 35% 30%, #6a5a48, #1a1410 70%);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 220, 160, 0.15),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.hub-tv-brand {
+  color: rgba(200, 170, 110, 0.55);
+  font-family: "IBM Plex Mono", monospace;
+  letter-spacing: 0.28em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8);
+}
+
+.hub-tube-tint {
+  background: radial-gradient(
+    ellipse 88% 78% at 50% 48%,
+    rgba(255, 210, 120, 0.05) 0%,
+    rgba(20, 30, 10, 0.12) 55%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+  animation: hub-tube-flicker 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-static-noise,
+  .hub-scan-beam,
+  .hub-title-glow,
+  .hub-ticker-track,
+  .hub-cursor::after,
+  .hub-tube-tint {
+    animation: none;
+  }
+}
