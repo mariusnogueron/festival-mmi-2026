@@ -20,6 +20,7 @@ import {
   isBookHit,
   isEnvelopeHit,
   isLampCordHit,
+  isTvHit,
   isKeyboardHit,
   getHitKeyName,
   KEY_LETTER_OBJECT_NAME,
@@ -444,17 +445,6 @@ export default function Model(props) {
       return hits.find((h) => h.object?.isMesh)?.object ?? null;
     };
 
-    const isTvHit = (obj) => {
-      const tv = tvMeshRef.current;
-      if (!tv) return false;
-      let current = obj;
-      while (current) {
-        if (current === tv) return true;
-        current = current.parent;
-      }
-      return false;
-    };
-
     const startInspect = (node, name) => {
       const originPos = node.getWorldPosition(new Vector3());
       const originQuat = node.getWorldQuaternion(new Quaternion());
@@ -462,7 +452,7 @@ export default function Model(props) {
       const forward = camera.getWorldDirection(new Vector3());
       const targetPos = camera
         .getWorldPosition(new Vector3())
-        .addScaledVector(forward, 1.1);
+        .addScaledVector(forward, 1.8);
       targetPos.y -= 0.1;
 
       const wasFloating = floatingNodesRef.current.has(name);
@@ -734,11 +724,7 @@ export default function Model(props) {
         obj.userData.baseY = obj.position.y;
       }
 
-      const lowerName = obj.name.toLowerCase();
-      if (
-        !tvMeshRef.current &&
-        (lowerName.includes("tv") || lowerName.includes("television"))
-      ) {
+      if (obj.name === "tele") {
         tvMeshRef.current = obj;
       }
 
@@ -764,7 +750,7 @@ export default function Model(props) {
         if (
           o.isMesh &&
           o !== tvMeshRef.current &&
-          o.name.toLowerCase().includes("screen")
+          o.name.toLowerCase().includes("ecran")
         ) {
           tvScreenMeshRef.current = o;
         }

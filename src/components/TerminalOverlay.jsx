@@ -90,7 +90,6 @@ const SCENES = {
       "Nagasaki.",
     ],
     choices: null,
-    freeze: 5000,
     next: "scene_3c",
   },
   scene_3c: {
