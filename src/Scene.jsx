@@ -773,3 +773,5 @@ export default function Model(props) {
 useGLTF.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.6/",
 );
+
+//
